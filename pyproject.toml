@@ -21,6 +21,8 @@ dependencies = [
     "skforecast",
     "darts",
     "pmdarima",
+    "pydlm",
+    "prophet",
     "numba==0.56.4",
     "llvmlite==0.39.1",
     "huggingface-hub==0.26.2"
