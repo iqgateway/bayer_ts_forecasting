@@ -51,64 +51,64 @@ st.markdown(
     /* Selected option background + font in dropdown (Select/Multiselect) */
     /* Selected item in the listbox */
     div[data-baseweb="select"] [role="listbox"] > div[aria-selected="true"] {
-        background-color: #89D329 !important;
-        color: #10384F !important;
+        background-color: #10384F !important;
+        color: #ffffff !important;
     }
     /* Fallback: selected nested element */
     div[data-baseweb="select"] [role="listbox"] [aria-selected="true"] {
-        background-color: #89D329 !important;
-        color: #10384F !important;
+        background-color: #10384F !important;
+        color: #ffffff !important;
     }
     /* Fallback: BaseWeb may use data-selected */
     div[data-baseweb="select"] [role="listbox"] [data-selected="true"] {
-        background-color: #89D329 !important;
-        color: #10384F !important;
+        background-color: #10384F !important;
+        color: #ffffff !important;
     }
     /* Keyboard focus highlight */
     div[data-baseweb="select"] [role="listbox"] > div:focus {
-        background-color: #89D329 !important;
-        color: #10384F !important;
+        background-color: #10384F !important;
+        color: #ffffff !important;
         outline: none !important;
     }
 
     /* Hover state for dropdown options */
     div[data-baseweb="select"] [role="listbox"] > div:hover {
         background-color: #89D329 !important;
-        color: #10384F !important;
+        color: #ffffff !important;
     }
 
     /* Selected tags/chips shown in Multiselect input */
     /* Use attribute-only selector to cover any element type */
     [data-baseweb="tag"] {
-        background-color: #89D329 !important;
-        color: #10384F !important;
+        background-color: #10384F !important;
+        color: #ffffff !important;
         border: none !important;
     }
     [data-baseweb="tag"] span {
-        color: #10384F !important;
+        color: #ffffff !important;
     }
     /* Close icon on tags */
     [data-baseweb="tag"] svg {
-        fill: #10384F !important;
-        color: #10384F !important;
+        fill: #ffffff !important;
+        color: #ffffff !important;
     }
     /* Ensure tags inside Select get same styling */
     div[data-baseweb="select"] [data-baseweb="tag"] {
-        background-color: #89D329 !important;
-        color: #10384F !important;
+        background-color: #10384F !important;
+        color: #ffffff !important;
         border: none !important;
     }
     /* Icons/checkmarks inside options: use brand green */
     div[data-baseweb="select"] [role="listbox"] svg {
-        fill: #89D329 !important;
-        color: #89D329 !important;
-        stroke: #89D329 !important;
+        fill: #10384F !important;
+        color: #10384F !important;
+        stroke: #10384F !important;
     }
     div[data-baseweb="select"] [role="listbox"] svg path,
     div[data-baseweb="select"] [role="listbox"] svg circle,
     div[data-baseweb="select"] [role="listbox"] svg polyline {
-        fill: #89D329 !important;
-        stroke: #89D329 !important;
+        fill: #10384F !important;
+        stroke: #10384F !important;
     }
 
     /* Control border: neutral by default; brand green on focus/open */
@@ -121,9 +121,9 @@ st.markdown(
     div[data-baseweb="select"] > div:focus,
     div[data-baseweb="select"] > div:focus-within,
     div[data-baseweb="select"][aria-expanded="true"] > div {
-        border-color: #89D329 !important;
+        border-color: #10384F !important;
         border-width: 1px !important;
-        box-shadow: inset 0 0 0 1px #89D329 !important; /* thinner active border */
+        box-shadow: inset 0 0 0 1px #10384F !important; /* thinner active border */
         outline: none !important;
     }
     </style>
