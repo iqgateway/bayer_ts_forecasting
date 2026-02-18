@@ -18,6 +18,31 @@ st.set_page_config(page_title="Time Series Forecasting", layout="wide")
 plt.style.use('seaborn-v0_8')
 PALETTE = plt.cm.tab10.colors  # 10 distinct, accessible colors
 
+# Style the "Run models" button
+st.markdown(
+    """
+    <style>
+    div.stButton > button:first-child {
+        background-color: #ff4b4b !important;
+        color: #ffffff !important;
+        border: none !important;
+    }
+    /* Button hover */
+    div.stButton > button:hover {
+        background-color: #ffdfdb !important;
+    }
+    
+    /* Header bottom border */
+    .block-container h1 {
+        border-bottom: 2px solid #F1F2F6 !important;
+        padding-bottom: 8px !important;
+        margin-bottom: 12px !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 @st.cache_data
 def load_data():
     return load_and_prepare(DATA_PATH)
