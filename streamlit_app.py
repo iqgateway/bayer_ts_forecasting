@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 
 from timeseries_utils import (
     load_and_prepare, filter_df, build_series, evaluate_models
@@ -12,6 +13,10 @@ import os
 DATA_PATH = os.path.join(os.path.dirname(__file__), "Bayer_2024_long.csv")
 
 st.set_page_config(page_title="Time Series Forecasting", layout="wide")
+
+# Use a modern, readable style and deterministic color palette
+plt.style.use('seaborn-v0_8')
+PALETTE = plt.cm.tab10.colors  # 10 distinct, accessible colors
 
 @st.cache_data
 def load_data():
@@ -217,7 +222,11 @@ if run:
 
         # Bar chart per target
         fig_y, ax_y = plt.subplots(figsize=(8,4))
-        rects = ax_y.bar(yearly_df["Year"].astype(str), yearly_df[f"Total_{target}"], color="C0")
+        rects = ax_y.bar(
+            yearly_df["Year"].astype(str),
+            yearly_df[f"Total_{target}"],
+            color=PALETTE[0]
+        )
         ax_y.set_title(f"Yearly totals ({target})")
         ax_y.set_xlabel("Year")
         ax_y.set_ylabel(target)
@@ -254,7 +263,13 @@ if run:
         for idx, target in enumerate(sel_targets):
             #ax_c.bar(x + offsets[idx], combined_df[f"Total_{target}"], width, label=target)
             totals = combined_df[f"Total_{target}"]
-            bars = ax_c.bar(x + offsets[idx], totals, width, label=target)
+            bars = ax_c.bar(
+                x + offsets[idx],
+                totals,
+                width,
+                label=target,
+                color=PALETTE[idx % len(PALETTE)]
+            )
             # Add value labels
             for r in bars:
                 h = r.get_height()
