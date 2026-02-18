@@ -98,24 +98,32 @@ st.markdown(
         color: #10384F !important;
         border: none !important;
     }
-    /* Icons/checkmarks inside options */
+    /* Icons/checkmarks inside options: use brand green */
     div[data-baseweb="select"] [role="listbox"] svg {
-        fill: #10384F !important;
-        color: #10384F !important;
+        fill: #89D329 !important;
+        color: #89D329 !important;
+        stroke: #89D329 !important;
+    }
+    div[data-baseweb="select"] [role="listbox"] svg path,
+    div[data-baseweb="select"] [role="listbox"] svg circle,
+    div[data-baseweb="select"] [role="listbox"] svg polyline {
+        fill: #89D329 !important;
+        stroke: #89D329 !important;
     }
 
-    /* Control border: override red outline on Select/Multiselect */
+    /* Control border: neutral by default; brand green on focus/open */
     div[data-baseweb="select"] > div {
-        border-color: #89D329 !important;
-        box-shadow: inset 0 0 0 1px #89D329 !important;
+        border-color: #DDE3EA !important; /* neutral */
+        border-width: 1px !important;
+        box-shadow: none !important;
         outline: none !important;
     }
-    div[data-baseweb="select"] > div:hover,
     div[data-baseweb="select"] > div:focus,
     div[data-baseweb="select"] > div:focus-within,
     div[data-baseweb="select"][aria-expanded="true"] > div {
         border-color: #89D329 !important;
-        box-shadow: inset 0 0 0 2px #89D329 !important;
+        border-width: 1px !important;
+        box-shadow: inset 0 0 0 1px #89D329 !important; /* thinner active border */
         outline: none !important;
     }
     </style>
