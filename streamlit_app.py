@@ -23,13 +23,13 @@ st.markdown(
     """
     <style>
     div.stButton > button:first-child {
-        background-color: #ff4b4b !important;
+        background-color: #89D329 !important;
         color: #ffffff !important;
         border: none !important;
     }
     /* Button hover */
     div.stButton > button:hover {
-        background-color: #ffdfdb !important;
+        background-color: #89D329 !important;
     }
     
     /* Header bottom border */
