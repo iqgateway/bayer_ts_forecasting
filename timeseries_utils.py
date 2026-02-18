@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 
 from sklearn.metrics import mean_absolute_error, mean_squared_error
+from typing import Optional
 
 # -----------------------------
 # Data loading/cleaning (same as notebook)
@@ -58,10 +59,10 @@ def load_and_prepare(data_path: str) -> pd.DataFrame:
 #     return d
 
 def filter_df(df: pd.DataFrame,
-              countries: list[str] | None,
-              global_cats: list[str] | None,
-              bchs: list[str] | None,
-              global_segments: list[str] | None) -> pd.DataFrame: 
+              countries: Optional[list[str]],
+              global_cats: Optional[list[str]],
+              bchs: Optional[list[str]],
+              global_segments: Optional[list[str]]) -> pd.DataFrame: 
     d = df.copy()
     if countries and len(countries) > 0:
         d = d[d["Country"].isin(countries)]
@@ -358,7 +359,7 @@ def run_tsfresh_xgb(
     fdr_level: float = 0.2,         # relax selection for small-N
     add_lags: bool = True,
     top_k_if_empty: int = 10,
-    xgb_params: dict | None = None
+    xgb_params: Optional[dict] = None
 ):
     import numpy as np
     import pandas as pd
