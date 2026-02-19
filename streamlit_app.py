@@ -174,7 +174,12 @@ col1, col2, col3, col4, col5 = st.columns(5)
 # 1) Countries
 with col1:
     country_options = [ALL] + countries
-    sel_countries = st.multiselect("Countries", options=country_options, default=[ALL])
+    sel_countries = st.multiselect(
+    "Countries",
+    options=country_options,
+    default=[ALL],
+    key="sel_countries"
+)
 eff_countries = countries if ALL in sel_countries or len(sel_countries) == 0 else sel_countries
 
 # 2) Global CAT depends on Countries
@@ -183,7 +188,12 @@ with col2:
         df[df["Country"].isin(eff_countries)]["Global_CAT"].dropna().unique().tolist()
     )
     cat_options = [ALL] + cats_filtered
-    sel_cats = st.multiselect("Global CAT", options=cat_options, default=[ALL])
+    sel_cats = st.multiselect(
+    "Global CAT",
+    options=cat_options,
+    default=[ALL],
+    key="sel_cats"
+)
 
 eff_cats = cats_filtered if ALL in sel_cats or len(sel_cats) == 0 else sel_cats
 
@@ -266,35 +276,82 @@ use_tsfresh = st.checkbox("Enable feature extraction and selection")
 use_tuning = st.checkbox("Enable hyperparameter tuning")
 run = st.button("Run models")
 
+# Initialize session state for storing results
+if 'results_cache' not in st.session_state:
+    st.session_state.results_cache = {}
+
+# Create a unique key for current filters
+filter_key = f"{eff_countries}_{eff_cats}_{eff_segments}_{eff_bchs}_{eff_products}_{sel_targets}_{use_tsfresh}_{use_tuning}"
 
 
-if run:
-    # Collect yearly totals for an optional combined view
+
+if run or filter_key in st.session_state.results_cache:
+    if run:
+        # Clear old cache and compute new results
+        st.session_state.results_cache = {}
+        
+        # Collect results for all targets
+        all_results = {}
+
+        for target in (sel_targets or ["Units"]):
+            series = build_series(df_filt, target_col=target)
+            
+            enable = {
+                "pmdarima": True,
+                "prophet": True,
+                "skforecast_xgb": True,
+                "sktime_es": True,
+                "darts_es": True,
+                "pydlm": True,
+                "tsfresh_xgb": bool(use_tsfresh),
+            }
+            results_df, best_model, test_compare, all_forecasts = evaluate_models(series, enable, target_name=target, tune=use_tuning)
+            
+            # Store results for this target
+            all_results[target] = {
+                'series': series,
+                'results_df': results_df,
+                'best_model': best_model,
+                'test_compare': test_compare,
+                'all_forecasts': all_forecasts
+            }
+        
+        # Cache the results
+        st.session_state.results_cache[filter_key] = {
+            'all_results': all_results,
+            'targets': sel_targets
+        }
+    
+    # Retrieve cached results
+    cached = st.session_state.results_cache[filter_key]
+    all_results = cached['all_results']
+    
+    # Now display results (this part won't re-compute on dropdown change)
     yearly_totals_by_target = {}
-
-    # Collect per-target forecasts and best model for export
     fcst_outputs = {}
     best_model_per_target = {}
-
-    for target in (sel_targets or ["Units"]):
+    
+    for target in (cached['targets'] or ["Units"]):
         st.subheader(f"--------------- Report ({target}) -----------------")
-
-        series = build_series(df_filt, target_col=target)
+        
+        result = all_results[target]
+        series = result['series']
+        results_df = result['results_df']
+        best_model = result['best_model']
+        test_compare = result['test_compare']
+        all_forecasts = result['all_forecasts']
+        
         st.write(f"{target} series length: {len(series)}, date range: {series.index.min().date()} → {series.index.max().date()}")
 
-        enable = {
-            "pmdarima": True,
-            "prophet": True,
-            "skforecast_xgb": True,
-            "sktime_es": True,
-            "darts_es": True,
-            "pydlm": True,
-            "tsfresh_xgb": bool(use_tsfresh),
-        }
-        results_df, best_model, test_compare, fcst_df = evaluate_models(series, enable, target_name=target, tune=use_tuning)  #####################
-
         st.subheader(f"Test Data Analysis: Actual vs Predictions — {target}")
-        st.dataframe(test_compare, use_container_width=True, hide_index = True)
+        styled_df = test_compare.style.set_properties(**{'text-align': 'center'}).set_table_styles(
+            [{'selector': 'th', 'props': [('text-align', 'center')]}]
+        )
+        st.dataframe(
+            styled_df,
+            use_container_width=True, 
+            hide_index=True
+        )
 
         # Plot: test actual vs each model
         fig, ax = plt.subplots(figsize=(10,4))
@@ -323,8 +380,22 @@ if run:
             else:
                 st.warning(f"Predictions for best model '{best_model}' not found ({target}).")
 
-        st.subheader(f"Forecast: 2025 — {target}")
-        #st.dataframe(fcst_df, use_container_width=True, hide_index = True)
+        # Model selection dropdown for forecast - All forecasts are already computed
+        available_models = list(all_forecasts.keys())
+        if available_models:
+            default_index = available_models.index(best_model) if best_model in available_models else 0
+            selected_model = st.selectbox(
+                f"Select model for forecast ({target})",
+                options=available_models,
+                index=default_index,
+                key=f"model_select_{target}"
+            )
+            fcst_df = all_forecasts[selected_model]
+        else:
+            selected_model = None
+            fcst_df = pd.DataFrame(columns=["Month", f"Forecast_{target}"])
+        
+        st.subheader(f"Forecast: 2026 — {target} ({selected_model})")
         fc_col = f"Forecast_{target}"
         if not fcst_df.empty and fc_col in fcst_df.columns:
             display_df = fcst_df.copy()
@@ -339,10 +410,9 @@ if run:
         # Plot forecast vs history
         fig2, ax2 = plt.subplots(figsize=(10,4))
         ax2.plot(series.index, series.values, label="History", marker="o")
-        #fc_col = f"Forecast_{target}"
         if not fcst_df.empty and fc_col in fcst_df.columns:
-            ax2.plot(fcst_df["Month"], fcst_df[fc_col], label=f"Forecast ({best_model or 'N/A'})", marker="o")
-        ax2.set_title(f"2025 Forecast ({target})")
+            ax2.plot(fcst_df["Month"], fcst_df[fc_col], label=f"Forecast ({selected_model or 'N/A'})", marker="o")
+        ax2.set_title(f"2026 Forecast ({target})")
         ax2.set_xlabel("Month"); ax2.set_ylabel(target); ax2.grid(True); ax2.legend()
         st.pyplot(fig2)
 
@@ -358,9 +428,6 @@ if run:
         "Year": yearly_totals_by_target[target].index.astype(str),
         f"Total_{target}": yearly_totals_by_target[target].values
         })
-
-        # Table per target
-        #st.dataframe(yearly_df, use_container_width=True, hide_index = True)
 
         # Bar chart per target
         fig_y, ax_y = plt.subplots(figsize=(8,4))
@@ -380,9 +447,9 @@ if run:
                           ha="center", va="bottom", fontsize=8)
         st.pyplot(fig_y)
 
-        # Keep per-target forecast for export
+        # Keep per-target forecast for export (use selected model)
         fcst_outputs[target] = fcst_df.copy()
-        best_model_per_target[target] = best_model
+        best_model_per_target[target] = selected_model
 
 
     # Combined yearly analysis when multiple targets are selected
@@ -448,16 +515,23 @@ if run:
             else "All"
         )
         display_bch = ("All" if has_bch and set(eff_bchs) == set(bchs) else (", ".join(eff_bchs) if has_bch and len(eff_bchs) > 0 else "All"))
+        display_product = (
+            eff_products[0] if has_prod and len(eff_products) == 1
+            else "All" if has_prod and (set(eff_products) == set(products_filtered) or len(eff_products) == 0)
+            else ", ".join(eff_products) if has_prod
+            else "All"
+        )
 
         export_df = fcst_months.copy()
         export_df["Country"] = display_country
         export_df["Global_CAT"] = display_cat
         export_df["Global_Segment"] = display_segment
         export_df["BCH"] = display_bch
+        export_df["Product"] = display_product
 
         # 3) Order columns for readability
         forecast_cols = [c for c in export_df.columns if c.startswith("Forecast_")]
-        export_df = export_df[["Country", "Global_CAT", "Global_Segment", "BCH", "Month"] + forecast_cols]
+        export_df = export_df[["Country", "Global_CAT", "Global_Segment", "BCH", "Product", "Month"] + forecast_cols]
 
         # 4) Sort by Month and show
         export_df = export_df.sort_values(["Month"]).reset_index(drop=True)

@@ -611,12 +611,16 @@ def evaluate_models(series: pd.Series, enable_models: dict, target_name: str = "
     test_compare = pd.DataFrame({"Month": y_test.index, "Actual": y_test.values})
     for m, preds in preds_store.items():
         test_compare[f"Pred_{m}"] = preds
+        # Calculate accuracy for each model
+        accuracy = (1 - (np.abs(y_test.values - preds) / np.where(y_test.values == 0, 1, y_test.values))) * 100
+        accuracy_series = pd.Series(accuracy).round(0).astype(int).astype(str) + '%'
+        test_compare[f"{m}_accuracy %"] = accuracy_series.values
 
-    if best_model:
-        fcst = fcst_store[best_model]
-        fcst_index = pd.date_range(pd.Timestamp("2026-01-01"), periods=12, freq="MS")
+    # Create forecast dataframes for all models
+    all_forecasts = {}
+    fcst_index = pd.date_range(pd.Timestamp("2026-01-01"), periods=12, freq="MS")
+    for model_name, fcst in fcst_store.items():
         fcst_df = pd.DataFrame({"Month": fcst_index, f"Forecast_{target_name}": fcst})
-    else:
-        fcst_df = pd.DataFrame(columns=["Month", f"Forecast_{target_name}"])
+        all_forecasts[model_name] = fcst_df
 
-    return results_df, best_model, test_compare, fcst_df
+    return results_df, best_model, test_compare, all_forecasts
