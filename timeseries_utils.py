@@ -614,7 +614,7 @@ def evaluate_models(series: pd.Series, enable_models: dict, target_name: str = "
         # Calculate accuracy for each model
         accuracy = (1 - (np.abs(y_test.values - preds) / np.where(y_test.values == 0, 1, y_test.values))) * 100
         accuracy_series = pd.Series(accuracy).round(0).astype(int).astype(str) + '%'
-        test_compare[f"{m}_accuracy %"] = accuracy_series.values
+        test_compare[f"{m}_% Error "] = accuracy_series.values
 
     # Create forecast dataframes for all models
     all_forecasts = {}
