@@ -130,6 +130,9 @@ st.markdown(
         box-shadow: inset 0 0 0 1px #10384F !important; /* thinner active border */
         outline: none !important;
     }
+    .green-header {
+        color: #89D329 !important;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -383,13 +386,14 @@ if run or filter_key in st.session_state.results_cache:
         # Model selection dropdown for forecast - All forecasts are already computed
         available_models = list(all_forecasts.keys())
         if available_models:
-            st.markdown(f"<h3 style='color: #89D329;'>Select model for forecast ({target}). Current Selection is best model: {best_model}</h3>", unsafe_allow_html=True)
+            st.markdown(f"<h3 class='green-header'>Select model for forecast ({target}). Current Selection is best model: {best_model}</h3>", unsafe_allow_html=True)
             default_index = available_models.index(best_model) if best_model in available_models else 0
             selected_model = st.selectbox(
-                "",
+                "Model selection",
                 options=available_models,
                 index=default_index,
-                key=f"model_select_{target}"
+                key=f"model_select_{target}",
+                label_visibility="collapsed"
             )
             fcst_df = all_forecasts[selected_model]
         else:
