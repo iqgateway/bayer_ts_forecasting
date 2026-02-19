@@ -13,7 +13,7 @@ import os
 DATA_PATHS = [
     os.path.join(os.path.dirname(__file__), "bayer_final_1.csv"),
     os.path.join(os.path.dirname(__file__), "bayer_final_2.csv"),
-    os.path.join(os.path.dirname(__file__), "bayer_final_3.csv"),
+    # os.path.join(os.path.dirname(__file__), "bayer_final_3.csv"),
 ]
 LOGO_PATH = os.path.join(os.path.dirname(__file__), "logo.svg")
 
