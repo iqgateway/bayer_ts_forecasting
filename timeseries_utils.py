@@ -549,58 +549,78 @@ def evaluate_models(series: pd.Series, enable_models: dict, target_name: str = "
     results = []
     preds_store = {}
     fcst_store = {}
+    model_name_mapping = {}  # Maps actual model name to generic name
+    model_counter = 1
 
     if enable_models.get("prophet", True):
         try:
             preds, fcst, _ = (run_prophet_tuned if tune else run_prophet)(y_train, y_test)
-            results.append(metrics_table(y_test.values, preds, "prophet"))
-            preds_store["prophet"] = preds
-            fcst_store["prophet"] = fcst
+            generic_name = f"Model {model_counter}"
+            model_name_mapping["prophet"] = generic_name
+            results.append(metrics_table(y_test.values, preds, generic_name))
+            preds_store[generic_name] = preds
+            fcst_store[generic_name] = fcst
+            model_counter += 1
         except Exception as e:
             print("Prophet failed:", e)
 
     if enable_models.get("skforecast_xgb", True):
         try:
             preds, fcst, _ = (run_skforecast_xgb_tuned if tune else run_skforecast_xgb)(y_train, y_test)
-            results.append(metrics_table(y_test.values, preds, "skforecast_xgb"))
-            preds_store["skforecast_xgb"] = preds
-            fcst_store["skforecast_xgb"] = fcst
+            generic_name = f"Model {model_counter}"
+            model_name_mapping["skforecast_xgb"] = generic_name
+            results.append(metrics_table(y_test.values, preds, generic_name))
+            preds_store[generic_name] = preds
+            fcst_store[generic_name] = fcst
+            model_counter += 1
         except Exception as e:
             print("skforecast_xgb failed:", e)
 
     if enable_models.get("sktime_es", True):
         try:
             preds, fcst, _ = (run_sktime_es_tuned if tune else run_sktime_es)(y_train, y_test)
-            results.append(metrics_table(y_test.values, preds, "sktime_es"))
-            preds_store["sktime_es"] = preds
-            fcst_store["sktime_es"] = fcst
+            generic_name = f"Model {model_counter}"
+            model_name_mapping["sktime_es"] = generic_name
+            results.append(metrics_table(y_test.values, preds, generic_name))
+            preds_store[generic_name] = preds
+            fcst_store[generic_name] = fcst
+            model_counter += 1
         except Exception as e:
             print("sktime_es failed:", e)
 
     if enable_models.get("darts_es", True):
         try:
             preds, fcst, _ = (run_darts_es_tuned if tune else run_darts_es)(y_train, y_test)
-            results.append(metrics_table(y_test.values, preds, "darts_es"))
-            preds_store["darts_es"] = preds
-            fcst_store["darts_es"] = fcst
+            generic_name = f"Model {model_counter}"
+            model_name_mapping["darts_es"] = generic_name
+            results.append(metrics_table(y_test.values, preds, generic_name))
+            preds_store[generic_name] = preds
+            fcst_store[generic_name] = fcst
+            model_counter += 1
         except Exception as e:
             print("darts_es failed:", e)
 
     if enable_models.get("pydlm", False):
         try:
             preds, fcst, _ = run_pydlm(y_train, y_test)
-            results.append(metrics_table(y_test.values, preds, "pydlm"))
-            preds_store["pydlm"] = preds
-            fcst_store["pydlm"] = fcst
+            generic_name = f"Model {model_counter}"
+            model_name_mapping["pydlm"] = generic_name
+            results.append(metrics_table(y_test.values, preds, generic_name))
+            preds_store[generic_name] = preds
+            fcst_store[generic_name] = fcst
+            model_counter += 1
         except Exception as e:
             print("pydlm failed:", e)
 
     if enable_models.get("tsfresh_xgb", False):
         try:
             preds, fcst, _ = (run_tsfresh_xgb_tuned if tune else run_tsfresh_xgb)(y_train, y_test)
-            results.append(metrics_table(y_test.values, preds, "tsfresh_xgb"))
-            preds_store["tsfresh_xgb"] = preds
-            fcst_store["tsfresh_xgb"] = fcst
+            generic_name = f"Model {model_counter}"
+            model_name_mapping["tsfresh_xgb"] = generic_name
+            results.append(metrics_table(y_test.values, preds, generic_name))
+            preds_store[generic_name] = preds
+            fcst_store[generic_name] = fcst
+            model_counter += 1
         except Exception as e:
             print("tsfresh_xgb failed:", e)
 
@@ -614,7 +634,7 @@ def evaluate_models(series: pd.Series, enable_models: dict, target_name: str = "
         # Calculate accuracy for each model
         accuracy = (1 - (np.abs(y_test.values - preds) / np.where(y_test.values == 0, 1, y_test.values))) * 100
         accuracy_series = pd.Series(accuracy).round(0).astype(int).astype(str) + '%'
-        test_compare[f"{m}_% Error "] = accuracy_series.values
+        test_compare[f"{m}_accuracy % "] = accuracy_series.values
 
     # Create forecast dataframes for all models
     all_forecasts = {}
@@ -623,4 +643,4 @@ def evaluate_models(series: pd.Series, enable_models: dict, target_name: str = "
         fcst_df = pd.DataFrame({"Month": fcst_index, f"Forecast_{target_name}": fcst})
         all_forecasts[model_name] = fcst_df
 
-    return results_df, best_model, test_compare, all_forecasts
+    return results_df, best_model, test_compare, all_forecasts, model_name_mapping

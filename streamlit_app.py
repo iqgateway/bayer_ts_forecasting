@@ -308,7 +308,7 @@ if run or filter_key in st.session_state.results_cache:
                 "pydlm": True,
                 "tsfresh_xgb": bool(use_tsfresh),
             }
-            results_df, best_model, test_compare, all_forecasts = evaluate_models(series, enable, target_name=target, tune=use_tuning)
+            results_df, best_model, test_compare, all_forecasts, model_name_mapping = evaluate_models(series, enable, target_name=target, tune=use_tuning)
             
             # Store results for this target
             all_results[target] = {
@@ -316,7 +316,8 @@ if run or filter_key in st.session_state.results_cache:
                 'results_df': results_df,
                 'best_model': best_model,
                 'test_compare': test_compare,
-                'all_forecasts': all_forecasts
+                'all_forecasts': all_forecasts,
+                'model_name_mapping': model_name_mapping
             }
         
         # Cache the results
@@ -343,6 +344,7 @@ if run or filter_key in st.session_state.results_cache:
         best_model = result['best_model']
         test_compare = result['test_compare']
         all_forecasts = result['all_forecasts']
+        model_name_mapping = result.get('model_name_mapping', {})
         
         st.write(f"{target} series length: {len(series)}, date range: {series.index.min().date()} → {series.index.max().date()}")
 
