@@ -10,7 +10,11 @@ from timeseries_utils import (
 import os
 # from statsmodels.graphics.tsaplots import plot_acf
 
-DATA_PATH = os.path.join(os.path.dirname(__file__), "Bayer_2024_long.csv")
+DATA_PATHS = [
+    os.path.join(os.path.dirname(__file__), "bayer_final_1.csv"),
+    os.path.join(os.path.dirname(__file__), "bayer_final_2.csv"),
+    os.path.join(os.path.dirname(__file__), "bayer_final_3.csv"),
+]
 LOGO_PATH = os.path.join(os.path.dirname(__file__), "logo.svg")
 
 st.set_page_config(page_title="Time Series Forecasting", layout="wide")
@@ -133,7 +137,8 @@ st.markdown(
 
 @st.cache_data
 def load_data():
-    return load_and_prepare(DATA_PATH)
+    dfs = [load_and_prepare(path) for path in DATA_PATHS]
+    return pd.concat(dfs, ignore_index=True)
 
 df = load_data()
 # Inline logo before the main heading
@@ -160,16 +165,16 @@ has_bch = "BCH" in df.columns
 bchs = (sorted(df["BCH"].dropna().unique().tolist(), key=lambda x: 0 if str(x).strip().lower() == "yes" else 1) if has_bch else [])
 
 has_seg = "Global_Segment" in df.columns
+has_prod = "Product" in df.columns
 
 ALL = "Select All"
 
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3, col4, col5 = st.columns(5)
 
 # 1) Countries
 with col1:
     country_options = [ALL] + countries
     sel_countries = st.multiselect("Countries", options=country_options, default=[ALL])
-
 eff_countries = countries if ALL in sel_countries or len(sel_countries) == 0 else sel_countries
 
 # 2) Global CAT depends on Countries
@@ -207,17 +212,48 @@ with col4:
 
 eff_bchs = (bchs if has_bch and (ALL in sel_bchs or len(sel_bchs) == 0) else sel_bchs)
 
+# Determine if the Product filter should be shown
+# It should appear if 'Yes' (BCH) or 'Select All' is chosen in the Bayer filter.
+# It should be hidden if only 'No' (Others) is selected.
+show_product_filter = False
+if has_prod:
+    if not has_bch:
+        show_product_filter = True  # No Bayer filter, so always show Product
+    elif ALL in sel_bchs or any(str(x).strip().lower() in ["yes", "bch"] for x in sel_bchs):
+        show_product_filter = True
+
+# 5) Product (depends on all above)
+with col5:
+    if show_product_filter:
+        df_for_prods = df[df["Country"].isin(eff_countries)]
+        if len(eff_cats) > 0:
+            df_for_prods = df_for_prods[df_for_prods["Global_CAT"].isin(eff_cats)]
+        if has_seg and len(eff_segments) > 0:
+            df_for_prods = df_for_prods[df_for_prods["Global_Segment"].isin(eff_segments)]
+        if has_bch and len(eff_bchs) > 0:
+            df_for_prods = df_for_prods[df_for_prods["BCH"].isin(eff_bchs)]
+        
+        products_filtered = sorted(df_for_prods["Product"].dropna().unique().tolist())
+        prod_options = [ALL] + products_filtered
+        sel_products = st.multiselect("Product", options=prod_options, default=[ALL])
+    else:
+        sel_products = []
+        products_filtered = []
+
+eff_products = products_filtered if has_prod and (ALL in sel_products or len(sel_products) == 0) else sel_products
+
 st.write("Selected filters:", {
     "Countries": f"{len(eff_countries)} selected",
     "Global CAT": f"{len(eff_cats)} selected",
     "Global Segment": f"{len(eff_segments)} selected" if has_seg else "N/A",
     "Bayer": f"{len(eff_bchs)} selected" if has_bch else "N/A",
+    "Product": f"{len(eff_products)} selected" if has_prod else "N/A",
 })
 
 target_options = ["Units", "Euro Value"]
 sel_targets = st.multiselect("Target(s)", options=target_options, default=["Units"])
 
-df_filt = filter_df(df, eff_countries, eff_cats, eff_bchs, eff_segments)
+df_filt = filter_df(df, eff_countries, eff_cats, eff_bchs, eff_segments, eff_products)
 if df_filt.empty:
     st.warning("No data for the selected filters.")
     st.stop()
@@ -245,28 +281,6 @@ if run:
 
         series = build_series(df_filt, target_col=target)
         st.write(f"{target} series length: {len(series)}, date range: {series.index.min().date()} → {series.index.max().date()}")
-
-        ##################################################
-        ##################################################
-        ##################################################
-        ##################################################
-        ##################################################
-        # # ACF for training set
-        # from timeseries_utils import split_train_test  # local import to keep top imports minimal
-        # y_train, y_test = split_train_test(series)
-        # st.subheader(f"Autocorrelation (ACF) — {target} (train)")
-        # if len(y_train) > 2:
-        #     fig, ax = plt.subplots(figsize=(8, 3))
-        #     plot_acf(y_train, ax=ax, lags=min(36, len(y_train) - 1))
-        #     ax.set_title(f"ACF ({target}) - Train")
-        #     st.pyplot(fig)
-        # else:
-        #     st.info("Not enough training data to compute ACF.")
-        ##################################################
-        ##################################################
-        ##################################################
-        ##################################################
-        
 
         enable = {
             "pmdarima": True,
@@ -412,47 +426,7 @@ if run:
         ax_c.grid(axis="y", alpha=0.3)
         ax_c.legend()
         st.pyplot(fig_c)
-    
-    # # Build export report and download button (entity-level rows)
-    # if fcst_outputs:
-    #     # 1) Merge forecasts for all selected targets on Month
-    #     fcst_months = None
-    #     for tgt, df_out in fcst_outputs.items():
-    #         col_name = f"Forecast_{tgt}"
-    #         df_tmp = df_out[["Month", col_name]]
-    #         fcst_months = df_tmp if fcst_months is None else fcst_months.merge(df_tmp, on="Month", how="outer")
 
-    #     # 2) Build entity grid from filtered data (unique combos)
-    #     entity_cols = ["Country", "Global_CAT", "Global_Segment", "BCH"]
-    #     entities = df_filt.copy()
-
-    #     # Ensure all required columns exist and are filled
-    #     for c in entity_cols:
-    #         if c not in entities.columns:
-    #             entities[c] = "N/A"
-
-    #     entities = entities[entity_cols].drop_duplicates()
-
-    #     # 3) Cross-join entities with forecast months to get one row per entity per month
-    #     export_df = (
-    #         entities.assign(_key=1)
-    #         .merge(fcst_months.assign(_key=1), on="_key", how="outer")
-    #         .drop(columns="_key")
-    #     )
-
-    #     # 4) Order columns for readability (exclude best-model columns)
-    #     forecast_cols = [c for c in export_df.columns if c.startswith("Forecast_")]
-    #     export_df = export_df[["Country", "Global_CAT", "Global_Segment", "BCH", "Month"] + forecast_cols]
-
-    #     # NEW: Show final tables
-    #     st.subheader("Summary of filters with forecasts ready for export")
-    #     st.dataframe(
-    #         export_df.sort_values(["Country", "Global_CAT", "Global_Segment", "BCH", "Month"]),
-    #         use_container_width=True,
-    #         hide_index=True
-    #     )
-    # else:
-    #     pass
     # Build export report and download button (entity-level rows)
     if fcst_outputs:
         # 1) Merge forecasts for all selected targets on Month

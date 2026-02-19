@@ -31,7 +31,7 @@ def load_and_prepare(data_path: str) -> pd.DataFrame:
 
     # Parse Month
     df["Month"] = pd.to_datetime(df["Month"], errors="coerce")
-    df = df[(df["Month"] >= "2021-01-01") & (df["Month"] <= "2024-12-31")].copy()
+    df = df[(df["Month"] >= "2021-01-01") & (df["Month"] <= "2025-12-31")].copy()
 
     # Coerce numerics for new schema
     if "Value" in df.columns:
@@ -41,28 +41,12 @@ def load_and_prepare(data_path: str) -> pd.DataFrame:
 
     return df
 
-
-# def filter_df(df: pd.DataFrame,
-#               countries: list[str] | None,
-#               global_cats: list[str] | None,
-#               bchs: list[str] | None,
-#               global_segments: list[str] | None) -> pd.DataFrame:
-#     d = df.copy()
-#     if countries and len(countries) > 0:
-#         d = d[d["Country"].isin(countries)]
-#     if global_cats and len(global_cats) > 0:
-#         d = d[d["Global_CAT"].isin(global_cats)]
-#     if "Global_Segment" in d.columns and global_segments is not None and len(global_segments) > 0:
-#         d = d[d["Global_Segment"].isin(global_segments)]
-#     if "BCH" in d.columns and bchs is not None and len(bchs) > 0:
-#         d = d[d["BCH"].isin(bchs)]
-#     return d
-
 def filter_df(df: pd.DataFrame,
               countries: Optional[list[str]],
               global_cats: Optional[list[str]],
               bchs: Optional[list[str]],
-              global_segments: Optional[list[str]]) -> pd.DataFrame: 
+              global_segments: Optional[list[str]],
+              products: Optional[list[str]]) -> pd.DataFrame: 
     d = df.copy()
     if countries and len(countries) > 0:
         d = d[d["Country"].isin(countries)]
@@ -72,6 +56,8 @@ def filter_df(df: pd.DataFrame,
         d = d[d["Global_Segment"].isin(global_segments)]
     if "BCH" in d.columns and bchs is not None and len(bchs) > 0:
         d = d[d["BCH"].isin(bchs)]
+    if "Product" in d.columns and products is not None and len(products) > 0:
+        d = d[d["Product"].isin(products)]
     return d
 
 
@@ -116,8 +102,8 @@ def metrics_table(y_true, y_pred, model_name):
     return {"model": model_name, "RMSE": rmse, "MAE": mae, "MAPE%": mape, "sMAPE%": s_mape}
 
 def split_train_test(s: pd.Series):
-    y_train = s[s.index <= pd.Timestamp("2023-12-01")]
-    y_test = s[(s.index >= pd.Timestamp("2024-01-01")) & (s.index <= pd.Timestamp("2024-12-01"))]
+    y_train = s[s.index <= pd.Timestamp("2024-12-01")]
+    y_test = s[(s.index >= pd.Timestamp("2025-01-01")) & (s.index <= pd.Timestamp("2025-12-01"))]
     return y_train, y_test
 
 # -----------------------------
@@ -628,7 +614,7 @@ def evaluate_models(series: pd.Series, enable_models: dict, target_name: str = "
 
     if best_model:
         fcst = fcst_store[best_model]
-        fcst_index = pd.date_range(pd.Timestamp("2025-01-01"), periods=12, freq="MS")
+        fcst_index = pd.date_range(pd.Timestamp("2026-01-01"), periods=12, freq="MS")
         fcst_df = pd.DataFrame({"Month": fcst_index, f"Forecast_{target_name}": fcst})
     else:
         fcst_df = pd.DataFrame(columns=["Month", f"Forecast_{target_name}"])
