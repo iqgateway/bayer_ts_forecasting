@@ -383,7 +383,7 @@ if run or filter_key in st.session_state.results_cache:
         # Model selection dropdown for forecast - All forecasts are already computed
         available_models = list(all_forecasts.keys())
         if available_models:
-            st.subheader(f"Select model for forecast ({target}). Current Selection is best model: {best_model}")
+            st.markdown(f"<h3 style='color: #89D329;'>Select model for forecast ({target}). Current Selection is best model: {best_model}</h3>", unsafe_allow_html=True)
             default_index = available_models.index(best_model) if best_model in available_models else 0
             selected_model = st.selectbox(
                 "",
