@@ -8,13 +8,13 @@ WORKDIR /app
 RUN pip install uv
 
 # Copy only the project definition file first to leverage Docker's cache
-COPY bayers_ts_forecasting/pyproject.toml .
+COPY pyproject.toml .
 
 # Install dependencies using uv.
 RUN uv sync
 
 # Copy the rest of the application code from the subdirectory
-COPY bayers_ts_forecasting/ .
+COPY . .
 
 # Make port 8501 available
 EXPOSE 8501
