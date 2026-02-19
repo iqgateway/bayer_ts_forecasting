@@ -383,9 +383,10 @@ if run or filter_key in st.session_state.results_cache:
         # Model selection dropdown for forecast - All forecasts are already computed
         available_models = list(all_forecasts.keys())
         if available_models:
+            st.subheader(f"Select model for forecast ({target}). Current Selection is best model: {best_model}")
             default_index = available_models.index(best_model) if best_model in available_models else 0
             selected_model = st.selectbox(
-                f"Select model for forecast ({target})",
+                "",
                 options=available_models,
                 index=default_index,
                 key=f"model_select_{target}"
