@@ -145,6 +145,24 @@ def load_data():
 
 df = load_data()
 # Inline logo before the main heading
+
+def format_indian_number(n):
+    s = str(abs(int(n)))
+    if len(s) <= 3:
+        return s
+    else:
+        # Last 3 digits
+        last3 = s[-3:]
+        rest = s[:-3]
+        # Split rest into groups of 2
+        parts = []
+        while len(rest) > 2:
+            parts.insert(0, rest[-2:])
+            rest = rest[:-2]
+        if rest:
+            parts.insert(0, rest)
+        return ','.join(parts + [last3])
+
 try:
     with open(LOGO_PATH, "r", encoding="utf-8") as _f:
         _svg = _f.read()
@@ -349,13 +367,14 @@ if run or filter_key in st.session_state.results_cache:
         st.write(f"{target} series length: {len(series)}, date range: {series.index.min().date()} → {series.index.max().date()}")
 
         st.subheader(f"Test Data Analysis: Actual vs Predictions — {target}")
-        # Format Month as date only, and round Actual/Pred_* columns to int
+        # Format Month as date only, and format Actual/Pred_* columns with Indian number format
         display_test_compare = test_compare.copy()
         if "Month" in display_test_compare.columns:
             display_test_compare["Month"] = display_test_compare["Month"].dt.strftime("%Y-%m-%d")
         for col in display_test_compare.columns:
             if col == "Actual" or col.startswith("Pred_"):
                 display_test_compare[col] = display_test_compare[col].round(0).astype(int)
+                display_test_compare[col] = display_test_compare[col].apply(format_indian_number)
         styled_df = display_test_compare.style.set_properties(**{'text-align': 'center'}).set_table_styles(
             [{'selector': 'th', 'props': [('text-align', 'center')]}]
         )
@@ -376,11 +395,12 @@ if run or filter_key in st.session_state.results_cache:
         st.pyplot(fig)
 
         st.subheader("Model metrics")
-        # Round all numeric columns to integer for display
+        # Format all numeric columns to Indian number format
         metrics_df = results_df.copy()
         for col in metrics_df.columns:
             if metrics_df[col].dtype.kind in "fi":  # float or int
                 metrics_df[col] = metrics_df[col].round(0).astype(int)
+                metrics_df[col] = metrics_df[col].apply(format_indian_number)
         st.dataframe(metrics_df, use_container_width=True, hide_index=True)
         st.info(f"Best model: {best_model or 'None'} — based on the current filter selection for {target}.")
 
@@ -418,11 +438,13 @@ if run or filter_key in st.session_state.results_cache:
         fc_col = f"Forecast_{target}"
         if not fcst_df.empty and fc_col in fcst_df.columns:
             display_df = fcst_df.copy()
+            # Format Month as date only
             display_df["Month"] = display_df["Month"].dt.strftime("%Y-%m-%d")
-            # Round forecast column to integer
+            # Round forecast column to integer and format in Indian number format
             display_df[fc_col] = display_df[fc_col].round(0).astype(int)
-            total_val = float(display_df[fc_col].sum())
-            total_row = pd.DataFrame({"Month": ["Total"], fc_col: [total_val]})
+            display_df[fc_col] = display_df[fc_col].apply(format_indian_number)
+            total_val = int(display_df[fc_col].str.replace(',', '').astype(int).sum())
+            total_row = pd.DataFrame({"Month": ["Total"], fc_col: [format_indian_number(total_val)]})
             display_df = pd.concat([display_df, total_row], ignore_index=True)
             st.dataframe(display_df, use_container_width=True, hide_index=True)
         else:
@@ -464,7 +486,7 @@ if run or filter_key in st.session_state.results_cache:
         # Add value labels on bars
         for r in rects:
             h = r.get_height()
-            ax_y.annotate(f"{h:.0f}", (r.get_x() + r.get_width() / 2, h),
+            ax_y.annotate(format_indian_number(h), (r.get_x() + r.get_width() / 2, h),
                           ha="center", va="bottom", fontsize=8)
         st.pyplot(fig_y)
 
@@ -503,7 +525,7 @@ if run or filter_key in st.session_state.results_cache:
             # Add value labels
             for r in bars:
                 h = r.get_height()
-                ax_c.annotate(f"{h:.0f}", (r.get_x() + r.get_width()/2, h),
+                ax_c.annotate(format_indian_number(h), (r.get_x() + r.get_width()/2, h),
                               ha="center", va="bottom", fontsize=8)
                 
         ax_c.set_xticks(x)
@@ -557,11 +579,12 @@ if run or filter_key in st.session_state.results_cache:
         # 4) Sort by Month and show
         export_df = export_df.sort_values(["Month"]).reset_index(drop=True)
 
-        # Format Month as date only, and round Forecast columns to int
+        # Format Month as date only, and round Forecast columns to int and Indian number format
         if "Month" in export_df.columns:
             export_df["Month"] = pd.to_datetime(export_df["Month"]).dt.strftime("%Y-%m-%d")
         for col in forecast_cols:
             export_df[col] = export_df[col].round(0).astype(int)
+            export_df[col] = export_df[col].apply(format_indian_number)
 
         st.subheader("Summary of filters with forecasts ready for export")
         st.dataframe(export_df, use_container_width=True, hide_index=True)
