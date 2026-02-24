@@ -349,7 +349,14 @@ if run or filter_key in st.session_state.results_cache:
         st.write(f"{target} series length: {len(series)}, date range: {series.index.min().date()} → {series.index.max().date()}")
 
         st.subheader(f"Test Data Analysis: Actual vs Predictions — {target}")
-        styled_df = test_compare.style.set_properties(**{'text-align': 'center'}).set_table_styles(
+        # Format Month as date only, and round Actual/Pred_* columns to int
+        display_test_compare = test_compare.copy()
+        if "Month" in display_test_compare.columns:
+            display_test_compare["Month"] = display_test_compare["Month"].dt.strftime("%Y-%m-%d")
+        for col in display_test_compare.columns:
+            if col == "Actual" or col.startswith("Pred_"):
+                display_test_compare[col] = display_test_compare[col].round(0).astype(int)
+        styled_df = display_test_compare.style.set_properties(**{'text-align': 'center'}).set_table_styles(
             [{'selector': 'th', 'props': [('text-align', 'center')]}]
         )
         st.dataframe(
@@ -369,7 +376,12 @@ if run or filter_key in st.session_state.results_cache:
         st.pyplot(fig)
 
         st.subheader("Model metrics")
-        st.dataframe(results_df, use_container_width=True, hide_index = True)
+        # Round all numeric columns to integer for display
+        metrics_df = results_df.copy()
+        for col in metrics_df.columns:
+            if metrics_df[col].dtype.kind in "fi":  # float or int
+                metrics_df[col] = metrics_df[col].round(0).astype(int)
+        st.dataframe(metrics_df, use_container_width=True, hide_index=True)
         st.info(f"Best model: {best_model or 'None'} — based on the current filter selection for {target}.")
 
         if best_model:
@@ -406,7 +418,9 @@ if run or filter_key in st.session_state.results_cache:
         fc_col = f"Forecast_{target}"
         if not fcst_df.empty and fc_col in fcst_df.columns:
             display_df = fcst_df.copy()
-            display_df["Month"] = display_df["Month"].dt.strftime("%Y-%m-%d %H:%M:%S")
+            display_df["Month"] = display_df["Month"].dt.strftime("%Y-%m-%d")
+            # Round forecast column to integer
+            display_df[fc_col] = display_df[fc_col].round(0).astype(int)
             total_val = float(display_df[fc_col].sum())
             total_row = pd.DataFrame({"Month": ["Total"], fc_col: [total_val]})
             display_df = pd.concat([display_df, total_row], ignore_index=True)
@@ -542,6 +556,12 @@ if run or filter_key in st.session_state.results_cache:
 
         # 4) Sort by Month and show
         export_df = export_df.sort_values(["Month"]).reset_index(drop=True)
+
+        # Format Month as date only, and round Forecast columns to int
+        if "Month" in export_df.columns:
+            export_df["Month"] = pd.to_datetime(export_df["Month"]).dt.strftime("%Y-%m-%d")
+        for col in forecast_cols:
+            export_df[col] = export_df[col].round(0).astype(int)
 
         st.subheader("Summary of filters with forecasts ready for export")
         st.dataframe(export_df, use_container_width=True, hide_index=True)
