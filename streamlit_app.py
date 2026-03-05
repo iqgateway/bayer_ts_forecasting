@@ -7,7 +7,9 @@ import matplotlib as mpl
 from timeseries_utils import (
     load_and_prepare, filter_df, build_series, evaluate_models
 )
+# Add itertools for combinations
 import os
+import itertools
 # from statsmodels.graphics.tsaplots import plot_acf
 
 DATA_PATHS = [
@@ -188,30 +190,33 @@ bchs = (sorted(df["BCH"].dropna().unique().tolist(), key=lambda x: 0 if str(x).s
 has_seg = "Global_Segment" in df.columns
 has_prod = "Product" in df.columns
 
-ALL = "Select All"
+
 
 col1, col2, col3, col4, col5 = st.columns(5)
 
 
+
 # 1) Countries
 with col1:
-    country_options = [ALL] + countries
+    country_options = countries
     sel_countries = st.multiselect(
         "Countries",
         options=country_options,
-        default=[ALL],
+        default=[],
         key="sel_countries"
     )
-eff_countries = countries if ALL in sel_countries or len(sel_countries) == 0 else sel_countries
+eff_countries = sel_countries
+
 
 # 2) Bayer (BCH) selection
 with col4:
     if has_bch:
-        bch_options = [ALL] + bchs
-        sel_bchs = st.multiselect("Bayer", options=bch_options, default=[ALL])
+        bch_options = bchs
+        sel_bchs = st.multiselect("Bayer", options=bch_options, default=[])
     else:
         sel_bchs = []
-eff_bchs = (bchs if has_bch and (ALL in sel_bchs or len(sel_bchs) == 0) else sel_bchs)
+eff_bchs = sel_bchs
+
 
 # 3) Global CAT depends on Countries + Bayer
 with col2:
@@ -221,14 +226,15 @@ with col2:
     cats_filtered = sorted(
         df_for_cats["Global_CAT"].dropna().unique().tolist()
     )
-    cat_options = [ALL] + cats_filtered
+    cat_options = cats_filtered
     sel_cats = st.multiselect(
         "Global CAT",
         options=cat_options,
-        default=[ALL],
+        default=[],
         key="sel_cats"
     )
-eff_cats = cats_filtered if ALL in sel_cats or len(sel_cats) == 0 else sel_cats
+eff_cats = sel_cats
+
 
 # 4) Global Segment depends on Countries + Bayer + Global CAT
 with col3:
@@ -239,23 +245,25 @@ with col3:
         if len(eff_cats) > 0:
             df_for_segments = df_for_segments[df_for_segments["Global_CAT"].isin(eff_cats)]
         segments_filtered = sorted(df_for_segments["Global_Segment"].dropna().unique().tolist())
-        seg_options = [ALL] + segments_filtered
-        sel_segments = st.multiselect("Global Segment", options=seg_options, default=[ALL])
+        seg_options = segments_filtered
+        sel_segments = st.multiselect("Global Segment", options=seg_options, default=[])
     else:
         sel_segments = []
         segments_filtered = []
-eff_segments = segments_filtered if has_seg and (ALL in sel_segments or len(sel_segments) == 0) else sel_segments
+eff_segments = sel_segments
+
 
 # Determine if the Product filter should be shown
-# It should appear if 'Yes' (BCH) or 'Select All' is chosen in the Bayer filter.
+# It should appear if 'Yes' (BCH) is chosen in the Bayer filter.
 # It should be hidden if only 'No' (Others) is selected.
 show_product_filter = False
 if has_prod:
     if not has_bch:
         show_product_filter = True  # No Bayer filter, so always show Product
-    elif ALL in sel_bchs or any(str(x).strip().lower() in ["yes", "bch"] for x in sel_bchs):
+    elif any(str(x).strip().lower() in ["yes", "bch"] for x in sel_bchs):
         show_product_filter = True
 
+    
 # 5) Product (depends on all above)
 with col5:
     if show_product_filter:
@@ -266,15 +274,13 @@ with col5:
             df_for_prods = df_for_prods[df_for_prods["Global_Segment"].isin(eff_segments)]
         if has_bch and len(eff_bchs) > 0:
             df_for_prods = df_for_prods[df_for_prods["BCH"].isin(eff_bchs)]
-        
         products_filtered = sorted(df_for_prods["Product"].dropna().unique().tolist())
-        prod_options = [ALL] + products_filtered
-        sel_products = st.multiselect("Product", options=prod_options, default=[ALL])
+        prod_options = products_filtered
+        sel_products = st.multiselect("Product", options=prod_options, default=[])
     else:
         sel_products = []
         products_filtered = []
-
-eff_products = products_filtered if has_prod and (ALL in sel_products or len(sel_products) == 0) else sel_products
+    eff_products = sel_products
 
 st.write("Selected filters:", {
     "Countries": f"{len(eff_countries)} selected",
@@ -287,17 +293,39 @@ st.write("Selected filters:", {
 target_options = ["Units", "Euro Value"]
 sel_targets = st.multiselect("Target(s)", options=target_options, default=["Units"])
 
-df_filt = filter_df(df, eff_countries, eff_cats, eff_bchs, eff_segments, eff_products)
-if df_filt.empty:
-    st.warning("No data for the selected filters.")
-    st.stop()
 
-series = build_series(df_filt)
-st.write(f"Series length: {len(series)}, date range: {series.index.min().date()} → {series.index.max().date()}")
+# --- Generate all combinations for modeling ---
+combination_lists = [
+    eff_countries or [None],
+    eff_cats or [None],
+    eff_segments or [None],
+    eff_bchs or [None],
+    eff_products or [None],
+]
+combinations = list(itertools.product(*combination_lists))
+
+# Filter out combinations that don't exist in the data
+valid_combinations = []
+for combo in combinations:
+    country, cat, segment, bch, product = combo
+    df_check = filter_df(
+        df,
+        [country] if country else [],
+        [cat] if cat else [],
+        [bch] if bch else [],
+        [segment] if segment else [],
+        [product] if product else [],
+    )
+    if not df_check.empty:
+        valid_combinations.append(combo)
+
+num_targets = len(sel_targets or ["Units"])
+st.info(f"Models to run: Combinations found = {len(valid_combinations)}, Models to run: {len(valid_combinations) * 5 * num_targets}")
 
 # Controls
-use_tsfresh = st.checkbox("Enable feature extraction and selection")
+use_tsfresh = True  # Always enabled
 use_tuning = st.checkbox("Enable hyperparameter tuning")
+
 run = st.button("Run models")
 
 # Initialize session state for storing results
@@ -314,104 +342,102 @@ if run or filter_key in st.session_state.results_cache:
         # Clear old cache and compute new results
         st.session_state.results_cache = {}
 
-        # Collect results for all targets
         all_results = {}
+        # For each valid combination, run models for all selected targets
+        for combo in valid_combinations:
+            country, cat, segment, bch, product = combo
+            df_filt = filter_df(
+                df,
+                [country] if country else [],
+                [cat] if cat else [],
+                [bch] if bch else [],
+                [segment] if segment else [],
+                [product] if product else [],
+            )
+            if df_filt.empty:
+                continue
+            for target in (sel_targets or ["Units"]):
+                series = build_series(df_filt, target_col=target)
+                enable = {
+                    "pmdarima": True,
+                    "skforecast_xgb": True,
+                    "sktime_es": True,
+                    "darts_es": True,
+                    "pydlm": True,
+                    "tsfresh_xgb": bool(use_tsfresh),
+                }
+                results_df, best_model, test_compare, all_forecasts, model_name_mapping = evaluate_models(
+                    series, enable, target_name=target, tune=use_tuning
+                )
+                combo_key = (country, cat, segment, bch, product, target)
+                all_results[combo_key] = {
+                    'series': series,
+                    'results_df': results_df,
+                    'best_model': best_model,
+                    'test_compare': test_compare,
+                    'all_forecasts': all_forecasts,
+                    'model_name_mapping': model_name_mapping
+                }
 
-        for target in (sel_targets or ["Units"]):
-            series = build_series(df_filt, target_col=target)
-
-            enable = {
-                "pmdarima": True,
-                "prophet": True,
-                "skforecast_xgb": True,
-                "sktime_es": True,
-                "darts_es": True,
-                "pydlm": True,
-                "tsfresh_xgb": bool(use_tsfresh),
-            }
-            results_df, best_model, test_compare, all_forecasts, model_name_mapping = evaluate_models(series, enable, target_name=target, tune=use_tuning)
-
-            # Store results for this target
-            all_results[target] = {
-                'series': series,
-                'results_df': results_df,
-                'best_model': best_model,
-                'test_compare': test_compare,
-                'all_forecasts': all_forecasts,
-                'model_name_mapping': model_name_mapping
-            }
-
-        # Cache the results
         st.session_state.results_cache[filter_key] = {
             'all_results': all_results,
-            'targets': sel_targets
+            'targets': sel_targets,
+            'combinations': valid_combinations,
         }
 
     # Retrieve cached results
     cached = st.session_state.results_cache[filter_key]
     all_results = cached['all_results']
+    valid_combinations = cached['combinations']
 
-    # Only keep the export summary section
-    fcst_outputs = {}
-    for target in (cached['targets'] or ["Units"]):
-        result = all_results[target]
-        all_forecasts = result['all_forecasts']
-        best_model = result['best_model']
-        if best_model and best_model in all_forecasts:
-            fcst_outputs[target] = all_forecasts[best_model]
-        elif all_forecasts:
-            # fallback to first model if best not found
-            fcst_outputs[target] = next(iter(all_forecasts.values()))
+    # Build export summary for all combinations
+    export_rows = []
+    for combo in valid_combinations:
+        country, cat, segment, bch, product = combo
+        for target in (sel_targets or ["Units"]):
+            combo_key = (country, cat, segment, bch, product, target)
+            result = all_results.get(combo_key)
+            if not result:
+                continue
+            all_forecasts = result['all_forecasts']
+            best_model = result['best_model']
+            if best_model and best_model in all_forecasts:
+                df_out = all_forecasts[best_model]
+            elif all_forecasts:
+                df_out = next(iter(all_forecasts.values()))
+            else:
+                continue
+            col_name = f"Forecast_{target}"
+            for _, row in df_out.iterrows():
+                export_rows.append({
+                    "Country": country,
+                    "Global_CAT": cat,
+                    "Global_Segment": segment,
+                    "BCH": bch,
+                    "Product": product,
+                    "Month": row["Month"],
+                    col_name: row[col_name],
+                })
 
-    if fcst_outputs:
-        # 1) Merge forecasts for all selected targets on Month
-        fcst_months = None
-        for tgt, df_out in fcst_outputs.items():
-            col_name = f"Forecast_{tgt}"
-            df_tmp = df_out[["Month", col_name]]
-            fcst_months = df_tmp if fcst_months is None else fcst_months.merge(df_tmp, on="Month", how="outer")
-
-        # 2) Build a single summary row per month with selected filters
-        display_country = (eff_countries[0] if len(eff_countries) == 1 else "All")
-        display_cat = ("All" if set(eff_cats) == set(cats_filtered) else ", ".join(eff_cats or ["All"]))
-        display_segment = (
-            eff_segments[0] if has_seg and len(eff_segments) == 1
-            else "All" if has_seg and (set(eff_segments) == set(segments_filtered) or len(eff_segments) == 0)
-            else ", ".join(eff_segments) if has_seg
-            else "All"
-        )
-        display_bch = ("All" if has_bch and set(eff_bchs) == set(bchs) else (", ".join(eff_bchs) if has_bch and len(eff_bchs) > 0 else "All"))
-        display_product = (
-            eff_products[0] if has_prod and len(eff_products) == 1
-            else "All" if has_prod and (set(eff_products) == set(products_filtered) or len(eff_products) == 0)
-            else ", ".join(eff_products) if has_prod
-            else "All"
-        )
-
-        export_df = fcst_months.copy()
-        export_df["Country"] = display_country
-        export_df["Global_CAT"] = display_cat
-        export_df["Global_Segment"] = display_segment
-        export_df["BCH"] = display_bch
-        export_df["Product"] = display_product
-
-        # 3) Order columns for readability
-        forecast_cols = [c for c in export_df.columns if c.startswith("Forecast_")]
-        export_df = export_df[["Country", "Global_CAT", "Global_Segment", "BCH", "Product", "Month"] + forecast_cols]
-
-        # 4) Sort by Month and show
-        export_df = export_df.sort_values(["Month"]).reset_index(drop=True)
-
-        # Format Month as date only, and round Forecast columns to int and Indian number format
+    if export_rows:
+        export_df = pd.DataFrame(export_rows)
+        # Pivot so each target forecast is a column
+        if len(sel_targets) > 1:
+            export_df = export_df.pivot_table(
+                index=["Country", "Global_CAT", "Global_Segment", "BCH", "Product", "Month"],
+                values=[f"Forecast_{t}" for t in sel_targets],
+                aggfunc="first"
+            ).reset_index()
+        # Format Month and forecast columns
         if "Month" in export_df.columns:
             export_df["Month"] = pd.to_datetime(export_df["Month"]).dt.strftime("%Y-%m-%d")
+        forecast_cols = [c for c in export_df.columns if c.startswith("Forecast_")]
         for col in forecast_cols:
             export_df[col] = export_df[col].round(0).astype(int)
             export_df[col] = export_df[col].apply(format_indian_number)
-
         st.subheader("Summary of filters with forecasts ready for export")
         st.dataframe(export_df, use_container_width=True, hide_index=True)
     else:
-        pass
+        st.warning("No data for the selected combinations.")
  
 # -----------------------------
