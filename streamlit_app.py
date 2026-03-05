@@ -219,6 +219,7 @@ with col4:
 eff_bchs = sel_bchs
 
 
+
 # 3) Global CAT depends on Countries + Bayer
 with col2:
     df_for_cats = df[df["Country"].isin(eff_countries)]
@@ -227,14 +228,17 @@ with col2:
     cats_filtered = sorted(
         df_for_cats["Global_CAT"].dropna().unique().tolist()
     )
-    cat_options = cats_filtered
+    cat_options = ["Select All"] + cats_filtered
     sel_cats = st.multiselect(
         "Global CAT",
         options=cat_options,
         default=[],
         key="sel_cats"
     )
+    if "Select All" in sel_cats:
+        sel_cats = cats_filtered
 eff_cats = sel_cats
+
 
 
 # 4) Global Segment depends on Countries + Bayer + Global CAT
@@ -246,8 +250,15 @@ with col3:
         if len(eff_cats) > 0:
             df_for_segments = df_for_segments[df_for_segments["Global_CAT"].isin(eff_cats)]
         segments_filtered = sorted(df_for_segments["Global_Segment"].dropna().unique().tolist())
-        seg_options = segments_filtered
-        sel_segments = st.multiselect("Global Segment", options=seg_options, default=[])
+        seg_options = ["Select All"] + segments_filtered
+        sel_segments = st.multiselect(
+            "Global Segment",
+            options=seg_options,
+            default=[],
+            key="sel_segments"
+        )
+        if "Select All" in sel_segments:
+            sel_segments = segments_filtered
     else:
         sel_segments = []
         segments_filtered = []
@@ -265,6 +276,7 @@ if has_prod:
         show_product_filter = True
 
     
+
 # 5) Product (depends on all above)
 with col5:
     if show_product_filter:
@@ -276,8 +288,15 @@ with col5:
         if has_bch and len(eff_bchs) > 0:
             df_for_prods = df_for_prods[df_for_prods["BCH"].isin(eff_bchs)]
         products_filtered = sorted(df_for_prods["Product"].dropna().unique().tolist())
-        prod_options = products_filtered
-        sel_products = st.multiselect("Product", options=prod_options, default=[])
+        prod_options = ["Select All"] + products_filtered
+        sel_products = st.multiselect(
+            "Product",
+            options=prod_options,
+            default=[],
+            key="sel_products"
+        )
+        if "Select All" in sel_products:
+            sel_products = products_filtered
     else:
         sel_products = []
         products_filtered = []
