@@ -10,6 +10,7 @@ from timeseries_utils import (
 # Add itertools for combinations
 import os
 import itertools
+import datetime
 # from statsmodels.graphics.tsaplots import plot_acf
 
 DATA_PATHS = [
@@ -337,12 +338,19 @@ filter_key = f"{eff_countries}_{eff_cats}_{eff_segments}_{eff_bchs}_{eff_product
 
 
 
+
 if run or filter_key in st.session_state.results_cache:
     if run:
         # Clear old cache and compute new results
         st.session_state.results_cache = {}
 
         all_results = {}
+        total_models = len(valid_combinations) * len(sel_targets or ["Units"]) * 5  # 5 models per combo/target
+        progress_bar = st.progress(0, text="Running models...")
+        model_counter = 0
+
+        runtime_start = datetime.datetime.now()
+
         # For each valid combination, run models for all selected targets
         for combo in valid_combinations:
             country, cat, segment, bch, product = combo
@@ -364,31 +372,63 @@ if run or filter_key in st.session_state.results_cache:
                     "sktime_es": True,
                     "darts_es": True,
                     "pydlm": True,
-                    "tsfresh_xgb": bool(use_tsfresh),
+                    "tsfresh_xgb": True,  # Always enabled
                 }
-                results_df, best_model, test_compare, all_forecasts, model_name_mapping = evaluate_models(
-                    series, enable, target_name=target, tune=use_tuning
-                )
+                # Run each model separately to update progress
+                model_results = {}
+                for model_name in enable:
+                    if enable[model_name]:
+                        single_enable = {k: (k == model_name) for k in enable}
+                        results_df, best_model, test_compare, all_forecasts, model_name_mapping = evaluate_models(
+                            series, single_enable, target_name=target, tune=use_tuning
+                        )
+                        model_results[model_name] = {
+                            'results_df': results_df,
+                            'best_model': best_model,
+                            'test_compare': test_compare,
+                            'all_forecasts': all_forecasts,
+                            'model_name_mapping': model_name_mapping
+                        }
+                        model_counter += 1
+                        progress = min(model_counter / total_models, 1.0)
+                        progress_bar.progress(progress, text=f"Running models... ({model_counter}/{total_models})")
+                # Store last model's results for summary (or aggregate if needed)
+                last_model = [k for k in enable if enable[k]][-1]
                 combo_key = (country, cat, segment, bch, product, target)
-                all_results[combo_key] = {
-                    'series': series,
-                    'results_df': results_df,
-                    'best_model': best_model,
-                    'test_compare': test_compare,
-                    'all_forecasts': all_forecasts,
-                    'model_name_mapping': model_name_mapping
-                }
+                all_results[combo_key] = model_results[last_model]
+
+        runtime_end = datetime.datetime.now()
+        total_time = runtime_end - runtime_start
+        progress_bar.empty()  # Remove progress bar when done
 
         st.session_state.results_cache[filter_key] = {
             'all_results': all_results,
             'targets': sel_targets,
             'combinations': valid_combinations,
+            'runtime_start': runtime_start,
+            'runtime_end': runtime_end,
+            'total_time': total_time,
         }
+
 
     # Retrieve cached results
     cached = st.session_state.results_cache[filter_key]
+    enabled_model_keys = ["pmdarima", "skforecast_xgb", "sktime_es", "darts_es", "pydlm", "tsfresh_xgb"]
+    num_enabled_models = 0
+    for model_name in enabled_model_keys:
+        num_enabled_models += 1  # All are enabled in your code
+    total_models = len(valid_combinations) * len(sel_targets or ["Units"]) * num_enabled_models
     all_results = cached['all_results']
     valid_combinations = cached['combinations']
+    runtime_start = cached.get('runtime_start', None)
+    runtime_end = cached.get('runtime_end', None)
+    total_time = cached.get('total_time', None)
+
+    # Show runtime info above export summary
+    if runtime_start and runtime_end and total_time:
+        st.markdown(f"**Runtime start:** {runtime_start.strftime('%Y-%m-%d %H:%M:%S')}")
+        st.markdown(f"**Runtime end:** {runtime_end.strftime('%Y-%m-%d %H:%M:%S')}")
+        st.markdown(f"**Total time taken:** {str(total_time).split('.')[0]}")
 
     # Build export summary for all combinations
     export_rows = []
@@ -421,7 +461,6 @@ if run or filter_key in st.session_state.results_cache:
 
     if export_rows:
         export_df = pd.DataFrame(export_rows)
-        # Pivot so each target forecast is a column
         if len(sel_targets) > 1:
             export_df = export_df.pivot_table(
                 index=["Country", "Global_CAT", "Global_Segment", "BCH", "Product", "Month"],
