@@ -119,54 +119,54 @@ def run_pmdarima(y_train, y_test):
     fcst = model.predict(n_periods=12)
     return preds, fcst, model
 
-def run_prophet(y_train, y_test):
-    from prophet import Prophet
-    train_df = pd.DataFrame({"ds": y_train.index, "y": y_train.values})
-    model = Prophet(yearly_seasonality=True, weekly_seasonality=False, daily_seasonality=False)
-    model.fit(train_df)
+# def run_prophet(y_train, y_test):
+#     from prophet import Prophet
+#     train_df = pd.DataFrame({"ds": y_train.index, "y": y_train.values})
+#     model = Prophet(yearly_seasonality=True, weekly_seasonality=False, daily_seasonality=False)
+#     model.fit(train_df)
 
-    # Predict test period (12 months)
-    future_test = model.make_future_dataframe(periods=len(y_test), freq="MS")
-    forecast_test = model.predict(future_test)
-    preds = forecast_test.tail(len(y_test))["yhat"].values
+#     # Predict test period (12 months)
+#     future_test = model.make_future_dataframe(periods=len(y_test), freq="MS")
+#     forecast_test = model.predict(future_test)
+#     preds = forecast_test.tail(len(y_test))["yhat"].values
 
-    # Predict next 12 months after test (i.e., 2025)
-    future_all = model.make_future_dataframe(periods=len(y_test) + 12, freq="MS")
-    forecast_all = model.predict(future_all)
-    fcst = forecast_all.tail(12)["yhat"].values
-    return preds, fcst, model
+#     # Predict next 12 months after test (i.e., 2025)
+#     future_all = model.make_future_dataframe(periods=len(y_test) + 12, freq="MS")
+#     forecast_all = model.predict(future_all)
+#     fcst = forecast_all.tail(12)["yhat"].values
+#     return preds, fcst, model
 
 # ---------- NEW: tuned Prophet ----------
-def run_prophet_tuned(y_train, y_test):
-    from prophet import Prophet
-    train_df = pd.DataFrame({"ds": y_train.index, "y": y_train.values})
-    grids = [
-        {"seasonality_mode": "additive", "changepoint_prior_scale": 0.1},
-        {"seasonality_mode": "multiplicative", "changepoint_prior_scale": 0.05},
-        {"seasonality_mode": "multiplicative", "changepoint_prior_scale": 0.5},
-    ]
-    best = None; best_preds = None; best_fcst = None; best_model = None
-    for g in grids:
-        try:
-            model = Prophet(
-                yearly_seasonality=True, weekly_seasonality=False, daily_seasonality=False,
-                seasonality_mode=g["seasonality_mode"], changepoint_prior_scale=g["changepoint_prior_scale"]
-            )
-            model.fit(train_df)
-            future_test = model.make_future_dataframe(periods=len(y_test), freq="MS")
-            forecast_test = model.predict(future_test)
-            preds = forecast_test.tail(len(y_test))["yhat"].values
-            metric = smape(y_test.values, preds)
-            if (best is None) or (metric < best):
-                best = metric
-                best_preds = preds
-                future_all = model.make_future_dataframe(periods=len(y_test) + 12, freq="MS")
-                forecast_all = model.predict(future_all)
-                best_fcst = forecast_all.tail(12)["yhat"].values
-                best_model = model
-        except Exception:
-            continue
-    return best_preds, best_fcst, best_model
+# def run_prophet_tuned(y_train, y_test):
+#     from prophet import Prophet
+#     train_df = pd.DataFrame({"ds": y_train.index, "y": y_train.values})
+#     grids = [
+#         {"seasonality_mode": "additive", "changepoint_prior_scale": 0.1},
+#         {"seasonality_mode": "multiplicative", "changepoint_prior_scale": 0.05},
+#         {"seasonality_mode": "multiplicative", "changepoint_prior_scale": 0.5},
+#     ]
+#     best = None; best_preds = None; best_fcst = None; best_model = None
+#     for g in grids:
+#         try:
+#             model = Prophet(
+#                 yearly_seasonality=True, weekly_seasonality=False, daily_seasonality=False,
+#                 seasonality_mode=g["seasonality_mode"], changepoint_prior_scale=g["changepoint_prior_scale"]
+#             )
+#             model.fit(train_df)
+#             future_test = model.make_future_dataframe(periods=len(y_test), freq="MS")
+#             forecast_test = model.predict(future_test)
+#             preds = forecast_test.tail(len(y_test))["yhat"].values
+#             metric = smape(y_test.values, preds)
+#             if (best is None) or (metric < best):
+#                 best = metric
+#                 best_preds = preds
+#                 future_all = model.make_future_dataframe(periods=len(y_test) + 12, freq="MS")
+#                 forecast_all = model.predict(future_all)
+#                 best_fcst = forecast_all.tail(12)["yhat"].values
+#                 best_model = model
+#         except Exception:
+#             continue
+#     return best_preds, best_fcst, best_model
 
 def run_skforecast_xgb(y_train, y_test):
     try:
@@ -552,17 +552,17 @@ def evaluate_models(series: pd.Series, enable_models: dict, target_name: str = "
     model_name_mapping = {}  # Maps actual model name to generic name
     model_counter = 1
 
-    if enable_models.get("prophet", True):
-        try:
-            preds, fcst, _ = (run_prophet_tuned if tune else run_prophet)(y_train, y_test)
-            generic_name = f"Model {model_counter}"
-            model_name_mapping["prophet"] = generic_name
-            results.append(metrics_table(y_test.values, preds, generic_name))
-            preds_store[generic_name] = preds
-            fcst_store[generic_name] = fcst
-            model_counter += 1
-        except Exception as e:
-            print("Prophet failed:", e)
+    # if enable_models.get("prophet", True):
+    #     try:
+    #         preds, fcst, _ = (run_prophet_tuned if tune else run_prophet)(y_train, y_test)
+    #         generic_name = f"Model {model_counter}"
+    #         model_name_mapping["prophet"] = generic_name
+    #         results.append(metrics_table(y_test.values, preds, generic_name))
+    #         preds_store[generic_name] = preds
+    #         fcst_store[generic_name] = fcst
+    #         model_counter += 1
+    #     except Exception as e:
+    #         print("Prophet failed:", e)
 
     if enable_models.get("skforecast_xgb", True):
         try:
