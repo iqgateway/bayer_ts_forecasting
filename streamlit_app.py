@@ -10,6 +10,8 @@ from timeseries_utils import (
 # Add itertools for combinations
 import os
 import itertools
+import concurrent.futures
+import os
 import datetime
 # from statsmodels.graphics.tsaplots import plot_acf
 
@@ -322,11 +324,12 @@ combination_lists = [
     eff_bchs or [None],
     eff_products or [None],
 ]
+
 combinations = list(itertools.product(*combination_lists))
 
-# Filter out combinations that don't exist in the data
-valid_combinations = []
-for combo in combinations:
+
+# --- Parallel filter for valid_combinations ---
+def is_valid_combination(combo):
     country, cat, segment, bch, product = combo
     df_check = filter_df(
         df,
@@ -336,11 +339,45 @@ for combo in combinations:
         [segment] if segment else [],
         [product] if product else [],
     )
-    if not df_check.empty:
-        valid_combinations.append(combo)
+    return combo if not df_check.empty else None
 
-num_targets = len(sel_targets or ["Units"])
-st.info(f"Models to run: Combinations found = {len(valid_combinations)}, Models to run: {len(valid_combinations) * 6 * num_targets}")
+# Add a button to run combinations
+if 'valid_combinations' not in st.session_state:
+    st.session_state.valid_combinations = None
+
+run_combinations = st.button("Run combinations")
+
+if run_combinations:
+    progress_bar_combo = st.progress(0, text="Finding valid combinations...")
+    valid_combinations = []
+    total_combo = len(combinations)
+    def combo_worker(idx_combo):
+        combo = combinations[idx_combo]
+        result = is_valid_combination(combo)
+        return (idx_combo, result)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(os.cpu_count(), 8)) as executor:
+        futures = [executor.submit(combo_worker, idx) for idx in range(total_combo)]
+        for i, future in enumerate(concurrent.futures.as_completed(futures)):
+            idx_combo, result = future.result()
+            if result:
+                valid_combinations.append(result)
+            progress = min((i + 1) / total_combo, 1.0)
+            progress_bar_combo.progress(progress, text=f"Finding valid combinations... ({i+1}/{total_combo})")
+    progress_bar_combo.empty()
+    st.session_state.valid_combinations = valid_combinations
+
+if st.session_state.valid_combinations is not None:
+    valid_combinations = st.session_state.valid_combinations
+    num_targets = len(sel_targets or ["Units"])
+    enabled_model_keys = [k for k, v in {
+        "pmdarima": True,
+        "skforecast_xgb": True,
+        "sktime_es": True,
+        "darts_es": True,
+        "pydlm": True,
+        "tsfresh_xgb": True
+    }.items() if v]
+    st.info(f"Models to run: Combinations found = {len(valid_combinations)}, Models to run: {len(valid_combinations) * len(enabled_model_keys) * num_targets}")
 
 # Controls
 use_tsfresh = True  # Always enabled
@@ -354,6 +391,7 @@ if 'results_cache' not in st.session_state:
 
 # Create a unique key for current filters
 filter_key = f"{eff_countries}_{eff_cats}_{eff_segments}_{eff_bchs}_{eff_products}_{sel_targets}_{use_tsfresh}_{use_tuning}"
+
 
 
 
@@ -378,8 +416,9 @@ if run or filter_key in st.session_state.results_cache:
 
         runtime_start = datetime.datetime.now()
 
-        # For each valid combination, run models for all selected targets
-        for combo in valid_combinations:
+        # --- Parallel model runs ---
+        def run_model_task(args):
+            combo, target, model_name, use_tuning = args
             country, cat, segment, bch, product = combo
             df_filt = filter_df(
                 df,
@@ -390,38 +429,37 @@ if run or filter_key in st.session_state.results_cache:
                 [product] if product else [],
             )
             if df_filt.empty:
-                continue
-            for target in (sel_targets or ["Units"]):
-                series = build_series(df_filt, target_col=target)
-                enable = {
-                    "pmdarima": True,
-                    "skforecast_xgb": True,
-                    "sktime_es": True,
-                    "darts_es": True,
-                    "pydlm": True,
-                    "tsfresh_xgb": True,  # Always enabled
-                }
-                # Run each model separately to update progress
-                model_results = {}
-                for model_name in enabled_model_keys:
-                    single_enable = {k: (k == model_name) for k in enable}
-                    results_df, best_model, test_compare, all_forecasts, model_name_mapping = evaluate_models(
-                        series, single_enable, target_name=target, tune=use_tuning
-                    )
-                    model_results[model_name] = {
-                        'results_df': results_df,
-                        'best_model': best_model,
-                        'test_compare': test_compare,
-                        'all_forecasts': all_forecasts,
-                        'model_name_mapping': model_name_mapping
-                    }
-                    model_counter += 1
-                    progress = min(model_counter / total_models, 1.0)
-                    progress_bar.progress(progress, text=f"Running models... ({model_counter}/{total_models})")
-                # Store last model's results for summary (or aggregate if needed)
-                last_model = [k for k in enable if enable[k]][-1]
-                combo_key = (country, cat, segment, bch, product, target)
-                all_results[combo_key] = model_results[last_model]
+                return (combo, target, model_name, None)
+            series = build_series(df_filt, target_col=target)
+            single_enable = {k: (k == model_name) for k in enabled_model_keys}
+            results_df, best_model, test_compare, all_forecasts, model_name_mapping = evaluate_models(
+                series, single_enable, target_name=target, tune=use_tuning
+            )
+            return (combo, target, model_name, {
+                'results_df': results_df,
+                'best_model': best_model,
+                'test_compare': test_compare,
+                'all_forecasts': all_forecasts,
+                'model_name_mapping': model_name_mapping
+            })
+
+        tasks = [
+            (combo, target, model_name, use_tuning)
+            for combo in valid_combinations
+            for target in (sel_targets or ["Units"])
+            for model_name in enabled_model_keys
+        ]
+
+        with concurrent.futures.ProcessPoolExecutor(max_workers=min(os.cpu_count(), 8)) as executor:
+            futures = [executor.submit(run_model_task, task) for task in tasks]
+            for future in concurrent.futures.as_completed(futures):
+                combo, target, model_name, result = future.result()
+                combo_key = (combo[0], combo[1], combo[2], combo[3], combo[4], target)
+                if result is not None:
+                    all_results[combo_key] = result
+                model_counter += 1
+                progress = min(model_counter / total_models, 1.0)
+                progress_bar.progress(progress, text=f"Running models... ({model_counter}/{total_models})")
 
         runtime_end = datetime.datetime.now()
         total_time = runtime_end - runtime_start
