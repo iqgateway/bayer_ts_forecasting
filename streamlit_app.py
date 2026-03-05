@@ -313,13 +313,13 @@ if run or filter_key in st.session_state.results_cache:
     if run:
         # Clear old cache and compute new results
         st.session_state.results_cache = {}
-        
+
         # Collect results for all targets
         all_results = {}
 
         for target in (sel_targets or ["Units"]):
             series = build_series(df_filt, target_col=target)
-            
+
             enable = {
                 "pmdarima": True,
                 "prophet": True,
@@ -330,7 +330,7 @@ if run or filter_key in st.session_state.results_cache:
                 "tsfresh_xgb": bool(use_tsfresh),
             }
             results_df, best_model, test_compare, all_forecasts, model_name_mapping = evaluate_models(series, enable, target_name=target, tune=use_tuning)
-            
+
             # Store results for this target
             all_results[target] = {
                 'series': series,
@@ -340,207 +340,29 @@ if run or filter_key in st.session_state.results_cache:
                 'all_forecasts': all_forecasts,
                 'model_name_mapping': model_name_mapping
             }
-        
+
         # Cache the results
         st.session_state.results_cache[filter_key] = {
             'all_results': all_results,
             'targets': sel_targets
         }
-    
+
     # Retrieve cached results
     cached = st.session_state.results_cache[filter_key]
     all_results = cached['all_results']
-    
-    # Now display results (this part won't re-compute on dropdown change)
-    yearly_totals_by_target = {}
+
+    # Only keep the export summary section
     fcst_outputs = {}
-    best_model_per_target = {}
-    
     for target in (cached['targets'] or ["Units"]):
-        st.subheader(f"--------------- Report ({target}) -----------------")
-        
         result = all_results[target]
-        series = result['series']
-        results_df = result['results_df']
-        best_model = result['best_model']
-        test_compare = result['test_compare']
         all_forecasts = result['all_forecasts']
-        model_name_mapping = result.get('model_name_mapping', {})
-        
-        st.write(f"{target} series length: {len(series)}, date range: {series.index.min().date()} → {series.index.max().date()}")
+        best_model = result['best_model']
+        if best_model and best_model in all_forecasts:
+            fcst_outputs[target] = all_forecasts[best_model]
+        elif all_forecasts:
+            # fallback to first model if best not found
+            fcst_outputs[target] = next(iter(all_forecasts.values()))
 
-        st.subheader(f"Test Data Analysis: Actual vs Predictions — {target}")
-        # Format Month as date only, and format Actual/Pred_* columns with Indian number format
-        display_test_compare = test_compare.copy()
-        if "Month" in display_test_compare.columns:
-            display_test_compare["Month"] = display_test_compare["Month"].dt.strftime("%Y-%m-%d")
-        for col in display_test_compare.columns:
-            if col == "Actual" or col.startswith("Pred_"):
-                display_test_compare[col] = display_test_compare[col].round(0).astype(int)
-                display_test_compare[col] = display_test_compare[col].apply(format_indian_number)
-        styled_df = display_test_compare.style.set_properties(**{'text-align': 'center'}).set_table_styles(
-            [{'selector': 'th', 'props': [('text-align', 'center')]}]
-        )
-        st.dataframe(
-            styled_df,
-            use_container_width=True, 
-            hide_index=True
-        )
-
-        # Plot: test actual vs each model
-        fig, ax = plt.subplots(figsize=(10,4))
-        ax.plot(test_compare["Month"], test_compare["Actual"], label="Actual", marker="o", linestyle=":", linewidth=2)
-        for col in test_compare.columns:
-            if col.startswith("Pred_"):
-                ax.plot(test_compare["Month"], test_compare[col], label=col.replace("Pred_", "Pred: "), marker="o")
-        ax.set_title(f"Test comparison ({target})")
-        ax.set_xlabel("Month"); ax.set_ylabel(target); ax.grid(True); ax.legend(fontsize=8)
-        st.pyplot(fig)
-
-        st.subheader("Model metrics")
-        # Format all numeric columns to Indian number format
-        metrics_df = results_df.copy()
-        for col in metrics_df.columns:
-            if metrics_df[col].dtype.kind in "fi":  # float or int
-                metrics_df[col] = metrics_df[col].round(0).astype(int)
-                metrics_df[col] = metrics_df[col].apply(format_indian_number)
-        st.dataframe(metrics_df, use_container_width=True, hide_index=True)
-        st.info(f"Best model: {best_model or 'None'} — based on the current filter selection for {target}.")
-
-        if best_model:
-            pred_col = f"Pred_{best_model}"
-            if pred_col in test_compare.columns:
-                st.subheader(f"Best Model Visualization: Actual vs Predicted — {best_model} ({target})")
-                fig_best, ax_best = plt.subplots(figsize=(10, 4))
-                ax_best.plot(test_compare["Month"], test_compare["Actual"], label="Actual", marker="o", linestyle=":", linewidth=2)
-                ax_best.plot(test_compare["Month"], test_compare[pred_col], label=f"Predicted ({best_model})", marker="o", linestyle="-", linewidth=2)
-                ax_best.set_xlabel("Month"); ax_best.set_ylabel(target); ax_best.set_title(f"Actual vs Predicted for best model ({target})")
-                ax_best.grid(True); ax_best.legend(fontsize=8)
-                st.pyplot(fig_best)
-            else:
-                st.warning(f"Predictions for best model '{best_model}' not found ({target}).")
-
-        # Model selection dropdown for forecast - All forecasts are already computed
-        available_models = list(all_forecasts.keys())
-        if available_models:
-            st.markdown(f"<h3 class='green-header'>Select model for forecast ({target}). Current Selection is best model: {best_model}</h3>", unsafe_allow_html=True)
-            default_index = available_models.index(best_model) if best_model in available_models else 0
-            selected_model = st.selectbox(
-                "Model selection",
-                options=available_models,
-                index=default_index,
-                key=f"model_select_{target}",
-                label_visibility="collapsed"
-            )
-            fcst_df = all_forecasts[selected_model]
-        else:
-            selected_model = None
-            fcst_df = pd.DataFrame(columns=["Month", f"Forecast_{target}"])
-        
-        st.subheader(f"Forecast: 2026 — {target} ({selected_model})")
-        fc_col = f"Forecast_{target}"
-        if not fcst_df.empty and fc_col in fcst_df.columns:
-            display_df = fcst_df.copy()
-            # Format Month as date only
-            display_df["Month"] = display_df["Month"].dt.strftime("%Y-%m-%d")
-            # Round forecast column to integer and format in Indian number format
-            display_df[fc_col] = display_df[fc_col].round(0).astype(int)
-            display_df[fc_col] = display_df[fc_col].apply(format_indian_number)
-            total_val = int(display_df[fc_col].str.replace(',', '').astype(int).sum())
-            total_row = pd.DataFrame({"Month": ["Total"], fc_col: [format_indian_number(total_val)]})
-            display_df = pd.concat([display_df, total_row], ignore_index=True)
-            st.dataframe(display_df, use_container_width=True, hide_index=True)
-        else:
-            st.dataframe(fcst_df, use_container_width=True, hide_index=True)
-
-        # Plot forecast vs history
-        fig2, ax2 = plt.subplots(figsize=(10,4))
-        ax2.plot(series.index, series.values, label="History", marker="o")
-        if not fcst_df.empty and fc_col in fcst_df.columns:
-            ax2.plot(fcst_df["Month"], fcst_df[fc_col], label=f"Forecast ({selected_model or 'N/A'})", marker="o")
-        ax2.set_title(f"2026 Forecast ({target})")
-        ax2.set_xlabel("Month"); ax2.set_ylabel(target); ax2.grid(True); ax2.legend()
-        st.pyplot(fig2)
-
-        # Yearly analysis (history totals + forecasted year)
-        st.subheader(f"Yearly Totals — {target}")
-        hist_totals = series.groupby(series.index.year).sum()
-        if not fcst_df.empty and fc_col in fcst_df.columns:
-            forecast_year = int(fcst_df["Month"].dt.year.iloc[0])
-            hist_totals.loc[forecast_year] = float(fcst_df[fc_col].sum())
-        yearly_totals_by_target[target] = hist_totals.sort_index()
-
-        yearly_df = pd.DataFrame({
-        "Year": yearly_totals_by_target[target].index.astype(str),
-        f"Total_{target}": yearly_totals_by_target[target].values
-        })
-
-        # Bar chart per target
-        fig_y, ax_y = plt.subplots(figsize=(8,4))
-        rects = ax_y.bar(
-            yearly_df["Year"].astype(str),
-            yearly_df[f"Total_{target}"],
-            color=PALETTE[0]
-        )
-        ax_y.set_title(f"Yearly totals ({target})")
-        ax_y.set_xlabel("Year")
-        ax_y.set_ylabel(target)
-        ax_y.grid(axis="y", alpha=0.3)
-        # Add value labels on bars
-        for r in rects:
-            h = r.get_height()
-            ax_y.annotate(format_indian_number(h), (r.get_x() + r.get_width() / 2, h),
-                          ha="center", va="bottom", fontsize=8)
-        st.pyplot(fig_y)
-
-        # Keep per-target forecast for export (use selected model)
-        fcst_outputs[target] = fcst_df.copy()
-        best_model_per_target[target] = selected_model
-
-
-    # Combined yearly analysis when multiple targets are selected
-    if len(sel_targets or []) > 1:
-        st.subheader("Yearly Totals — Combined")
-        all_years = sorted(set().union(*[s.index.tolist() for s in yearly_totals_by_target.values()]))
-        combined_df = pd.DataFrame({"Year": [str(y) for y in all_years]})
-        for target in sel_targets:
-            s = yearly_totals_by_target.get(target, pd.Series(dtype=float))
-            combined_df[f"Total_{target}"] = [float(s.get(y, 0.0)) for y in all_years]
-
-        # Combined table
-        #st.dataframe(combined_df, use_container_width=True, hide_index = True)
-
-        # Grouped bar chart
-        x = np.arange(len(all_years))
-        width = min(0.8 / max(1, len(sel_targets)), 0.35)
-        fig_c, ax_c = plt.subplots(figsize=(10,4))
-        offsets = np.linspace(-width*(len(sel_targets)-1)/2, width*(len(sel_targets)-1)/2, len(sel_targets))
-        for idx, target in enumerate(sel_targets):
-            #ax_c.bar(x + offsets[idx], combined_df[f"Total_{target}"], width, label=target)
-            totals = combined_df[f"Total_{target}"]
-            bars = ax_c.bar(
-                x + offsets[idx],
-                totals,
-                width,
-                label=target,
-                color=PALETTE[idx % len(PALETTE)]
-            )
-            # Add value labels
-            for r in bars:
-                h = r.get_height()
-                ax_c.annotate(format_indian_number(h), (r.get_x() + r.get_width()/2, h),
-                              ha="center", va="bottom", fontsize=8)
-                
-        ax_c.set_xticks(x)
-        ax_c.set_xticklabels([str(y) for y in all_years])
-        ax_c.set_title("Yearly totals (combined)")
-        ax_c.set_xlabel("Year")
-        ax_c.set_ylabel("Totals")
-        ax_c.grid(axis="y", alpha=0.3)
-        ax_c.legend()
-        st.pyplot(fig_c)
-
-    # Build export report and download button (entity-level rows)
     if fcst_outputs:
         # 1) Merge forecasts for all selected targets on Month
         fcst_months = None
@@ -550,10 +372,8 @@ if run or filter_key in st.session_state.results_cache:
             fcst_months = df_tmp if fcst_months is None else fcst_months.merge(df_tmp, on="Month", how="outer")
 
         # 2) Build a single summary row per month with selected filters
-        # Display labels: show one selected value or "All" when selection is effectively all
         display_country = (eff_countries[0] if len(eff_countries) == 1 else "All")
         display_cat = ("All" if set(eff_cats) == set(cats_filtered) else ", ".join(eff_cats or ["All"]))
-        # display_segment = ("All" if has_seg and set(eff_segments) == set(segments_filtered) else (", ".join(eff_segments) if has_seg and len(eff_segments) > 0 else "All"))
         display_segment = (
             eff_segments[0] if has_seg and len(eff_segments) == 1
             else "All" if has_seg and (set(eff_segments) == set(segments_filtered) or len(eff_segments) == 0)
@@ -591,7 +411,6 @@ if run or filter_key in st.session_state.results_cache:
 
         st.subheader("Summary of filters with forecasts ready for export")
         st.dataframe(export_df, use_container_width=True, hide_index=True)
-
     else:
         pass
  
