@@ -340,7 +340,7 @@ for combo in combinations:
         valid_combinations.append(combo)
 
 num_targets = len(sel_targets or ["Units"])
-st.info(f"Models to run: Combinations found = {len(valid_combinations)}, Models to run: {len(valid_combinations) * 5 * num_targets}")
+st.info(f"Models to run: Combinations found = {len(valid_combinations)}, Models to run: {len(valid_combinations) * 6 * num_targets}")
 
 # Controls
 use_tsfresh = True  # Always enabled
@@ -364,7 +364,15 @@ if run or filter_key in st.session_state.results_cache:
         st.session_state.results_cache = {}
 
         all_results = {}
-        total_models = len(valid_combinations) * len(sel_targets or ["Units"]) * 5  # 5 models per combo/target
+        enabled_model_keys = [k for k, v in {
+            "pmdarima": True,
+            "skforecast_xgb": True,
+            "sktime_es": True,
+            "darts_es": True,
+            "pydlm": True,
+            "tsfresh_xgb": True
+        }.items() if v]
+        total_models = len(valid_combinations) * len(sel_targets or ["Units"]) * len(enabled_model_keys)
         progress_bar = st.progress(0, text="Running models...")
         model_counter = 0
 
@@ -395,22 +403,21 @@ if run or filter_key in st.session_state.results_cache:
                 }
                 # Run each model separately to update progress
                 model_results = {}
-                for model_name in enable:
-                    if enable[model_name]:
-                        single_enable = {k: (k == model_name) for k in enable}
-                        results_df, best_model, test_compare, all_forecasts, model_name_mapping = evaluate_models(
-                            series, single_enable, target_name=target, tune=use_tuning
-                        )
-                        model_results[model_name] = {
-                            'results_df': results_df,
-                            'best_model': best_model,
-                            'test_compare': test_compare,
-                            'all_forecasts': all_forecasts,
-                            'model_name_mapping': model_name_mapping
-                        }
-                        model_counter += 1
-                        progress = min(model_counter / total_models, 1.0)
-                        progress_bar.progress(progress, text=f"Running models... ({model_counter}/{total_models})")
+                for model_name in enabled_model_keys:
+                    single_enable = {k: (k == model_name) for k in enable}
+                    results_df, best_model, test_compare, all_forecasts, model_name_mapping = evaluate_models(
+                        series, single_enable, target_name=target, tune=use_tuning
+                    )
+                    model_results[model_name] = {
+                        'results_df': results_df,
+                        'best_model': best_model,
+                        'test_compare': test_compare,
+                        'all_forecasts': all_forecasts,
+                        'model_name_mapping': model_name_mapping
+                    }
+                    model_counter += 1
+                    progress = min(model_counter / total_models, 1.0)
+                    progress_bar.progress(progress, text=f"Running models... ({model_counter}/{total_models})")
                 # Store last model's results for summary (or aggregate if needed)
                 last_model = [k for k in enable if enable[k]][-1]
                 combo_key = (country, cat, segment, bch, product, target)
