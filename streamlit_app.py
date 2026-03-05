@@ -192,36 +192,50 @@ ALL = "Select All"
 
 col1, col2, col3, col4, col5 = st.columns(5)
 
+
 # 1) Countries
 with col1:
     country_options = [ALL] + countries
     sel_countries = st.multiselect(
-    "Countries",
-    options=country_options,
-    default=[ALL],
-    key="sel_countries"
-)
+        "Countries",
+        options=country_options,
+        default=[ALL],
+        key="sel_countries"
+    )
 eff_countries = countries if ALL in sel_countries or len(sel_countries) == 0 else sel_countries
 
-# 2) Global CAT depends on Countries
+# 2) Bayer (BCH) selection
+with col4:
+    if has_bch:
+        bch_options = [ALL] + bchs
+        sel_bchs = st.multiselect("Bayer", options=bch_options, default=[ALL])
+    else:
+        sel_bchs = []
+eff_bchs = (bchs if has_bch and (ALL in sel_bchs or len(sel_bchs) == 0) else sel_bchs)
+
+# 3) Global CAT depends on Countries + Bayer
 with col2:
+    df_for_cats = df[df["Country"].isin(eff_countries)]
+    if has_bch and len(eff_bchs) > 0:
+        df_for_cats = df_for_cats[df_for_cats["BCH"].isin(eff_bchs)]
     cats_filtered = sorted(
-        df[df["Country"].isin(eff_countries)]["Global_CAT"].dropna().unique().tolist()
+        df_for_cats["Global_CAT"].dropna().unique().tolist()
     )
     cat_options = [ALL] + cats_filtered
     sel_cats = st.multiselect(
-    "Global CAT",
-    options=cat_options,
-    default=[ALL],
-    key="sel_cats"
-)
-
+        "Global CAT",
+        options=cat_options,
+        default=[ALL],
+        key="sel_cats"
+    )
 eff_cats = cats_filtered if ALL in sel_cats or len(sel_cats) == 0 else sel_cats
 
-# 3) Global Segment depends on Countries + Global CAT
+# 4) Global Segment depends on Countries + Bayer + Global CAT
 with col3:
     if has_seg:
         df_for_segments = df[df["Country"].isin(eff_countries)]
+        if has_bch and len(eff_bchs) > 0:
+            df_for_segments = df_for_segments[df_for_segments["BCH"].isin(eff_bchs)]
         if len(eff_cats) > 0:
             df_for_segments = df_for_segments[df_for_segments["Global_CAT"].isin(eff_cats)]
         segments_filtered = sorted(df_for_segments["Global_Segment"].dropna().unique().tolist())
@@ -230,18 +244,7 @@ with col3:
     else:
         sel_segments = []
         segments_filtered = []
-
 eff_segments = segments_filtered if has_seg and (ALL in sel_segments or len(sel_segments) == 0) else sel_segments
-
-# 4) Bayer (unchanged)
-with col4:
-    if has_bch:
-        bch_options = [ALL] + bchs
-        sel_bchs = st.multiselect("Bayer", options=bch_options, default=[ALL])
-    else:
-        sel_bchs = []
-
-eff_bchs = (bchs if has_bch and (ALL in sel_bchs or len(sel_bchs) == 0) else sel_bchs)
 
 # Determine if the Product filter should be shown
 # It should appear if 'Yes' (BCH) or 'Select All' is chosen in the Bayer filter.
