@@ -1,3 +1,9 @@
+import os
+# Limit thread usage for numpy/pandas/scipy multi-threaded libraries
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
 import streamlit as st
 import pandas as pd
 import numpy as np
