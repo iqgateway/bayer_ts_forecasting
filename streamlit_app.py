@@ -567,7 +567,7 @@ if run or filter_key in st.session_state.results_cache:
             export_df["Month"] = pd.to_datetime(export_df["Month"]).dt.strftime("%Y-%m-%d")
         forecast_cols = [c for c in export_df.columns if c.startswith("Forecast_")]
         for col in forecast_cols:
-            export_df[col] = export_df[col].round(0).astype(int)
+            export_df[col] = export_df[col].round(0).fillna(0).astype(int)
             export_df[col] = export_df[col].apply(format_indian_number)
         st.subheader("Summary of filters with forecasts ready for export")
         st.dataframe(export_df, use_container_width=True, hide_index=True)
