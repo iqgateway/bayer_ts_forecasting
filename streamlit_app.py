@@ -11,8 +11,9 @@ from timeseries_utils import (
 import os
 import itertools
 import concurrent.futures
-import os
 import datetime
+import pickle
+from file_cache_utils import load_cache, save_cache, get_cached_valid_combinations
 # from statsmodels.graphics.tsaplots import plot_acf
 
 DATA_PATHS = [
@@ -341,33 +342,57 @@ def is_valid_combination(combo):
     )
     return combo if not df_check.empty else None
 
-# Add a button to run combinations
-if 'valid_combinations' not in st.session_state:
-    st.session_state.valid_combinations = None
 
+
+# File-based cache for valid_combinations
+COMBO_CACHE_FILE = os.path.join(os.path.dirname(__file__), "combo_cache.pkl")
+if 'combination_cache' not in st.session_state:
+    st.session_state.combination_cache = load_cache(COMBO_CACHE_FILE)
+
+combo_cache_key = (
+    tuple(eff_countries),
+    tuple(eff_cats),
+    tuple(eff_segments),
+    tuple(eff_bchs),
+    tuple(eff_products),
+    tuple(sel_targets)
+)
 run_combinations = st.button("Run combinations")
 
-if run_combinations:
-    progress_bar_combo = st.progress(0, text="Finding valid combinations...")
-    valid_combinations = []
-    total_combo = len(combinations)
-    def combo_worker(idx_combo):
-        combo = combinations[idx_combo]
-        result = is_valid_combination(combo)
-        return (idx_combo, result)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=min(os.cpu_count(), 8)) as executor:
-        futures = [executor.submit(combo_worker, idx) for idx in range(total_combo)]
-        for i, future in enumerate(concurrent.futures.as_completed(futures)):
-            idx_combo, result = future.result()
-            if result:
-                valid_combinations.append(result)
-            progress = min((i + 1) / total_combo, 1.0)
-            progress_bar_combo.progress(progress, text=f"Finding valid combinations... ({i+1}/{total_combo})")
-    progress_bar_combo.empty()
-    st.session_state.valid_combinations = valid_combinations
+valid_combinations = None
+if run_combinations or combo_cache_key in st.session_state.combination_cache:
+    if combo_cache_key in st.session_state.combination_cache:
+        valid_combinations = st.session_state.combination_cache[combo_cache_key]
+    else:
+        combo_start_time = datetime.datetime.now()
+        st.write(f"Combinations start time: {combo_start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        progress_bar_combo = st.progress(0, text="Finding valid combinations...")
+        # Partial cache reuse logic
+        already_valid, to_compute = get_cached_valid_combinations(st.session_state.combination_cache, combinations)
+        valid_combinations = list(already_valid)
+        total_combo = len(to_compute)
+        if total_combo > 0:
+            def combo_worker(idx_combo):
+                combo = to_compute[idx_combo]
+                result = is_valid_combination(combo)
+                return (idx_combo, result)
+            with concurrent.futures.ProcessPoolExecutor(max_workers=min(os.cpu_count(), 8)) as executor:
+                futures = [executor.submit(combo_worker, idx) for idx in range(total_combo)]
+                for i, future in enumerate(concurrent.futures.as_completed(futures)):
+                    idx_combo, result = future.result()
+                    if result:
+                        valid_combinations.append(result)
+                    progress = min((i + 1) / (total_combo if total_combo else 1), 1.0)
+                    progress_bar_combo.progress(progress, text=f"Finding valid combinations... ({i+1}/{total_combo})")
+        progress_bar_combo.empty()
+        combo_end_time = datetime.datetime.now()
+        st.write(f"Combinations end time: {combo_end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        combo_total_time = (combo_end_time - combo_start_time).total_seconds()
+        st.write(f"Total time taken for combinations: {combo_total_time:.2f} seconds")
+        st.session_state.combination_cache[combo_cache_key] = valid_combinations
+        save_cache(COMBO_CACHE_FILE, st.session_state.combination_cache)
 
-if st.session_state.valid_combinations is not None:
-    valid_combinations = st.session_state.valid_combinations
+if valid_combinations is not None:
     num_targets = len(sel_targets or ["Units"])
     enabled_model_keys = [k for k, v in {
         "pmdarima": True,
