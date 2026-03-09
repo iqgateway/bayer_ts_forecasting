@@ -206,23 +206,25 @@ col1, col2, col3, col4, col5 = st.columns(5)
 
 
 
-# 1) Countries
+
+# 1) Countries (single selection)
 with col1:
     country_options = countries
-    sel_countries = st.multiselect(
-        "Countries",
+    sel_country = st.selectbox(
+        "Country",
         options=country_options,
-        default=[],
-        key="sel_countries"
+        key="sel_country"
     )
-eff_countries = sel_countries
+eff_countries = [sel_country]
 
 
-# 2) Bayer (BCH) selection
+
+# 2) Bayer (BCH) selection (single selection)
 with col4:
     if has_bch:
         bch_options = bchs
-        sel_bchs = st.multiselect("Bayer", options=bch_options, default=[])
+        sel_bch = st.selectbox("Bayer", options=bch_options, key="sel_bch")
+        sel_bchs = [sel_bch]
     else:
         sel_bchs = []
 eff_bchs = sel_bchs
