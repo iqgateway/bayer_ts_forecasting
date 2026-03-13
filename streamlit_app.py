@@ -310,6 +310,7 @@ with col5:
     else:
         # If Bayer is Other, auto-select all products for the filtered data, but do not show in UI
         if has_prod and has_bch and all(str(x).strip().lower() not in ["yes", "bch"] for x in sel_bchs):
+            # Filter products based on all current filters (Country, Global CAT, Global Segment, Bayer)
             df_for_prods = df[df["Country"].isin(eff_countries)]
             if len(eff_cats) > 0:
                 df_for_prods = df_for_prods[df_for_prods["Global_CAT"].isin(eff_cats)]
@@ -317,6 +318,7 @@ with col5:
                 df_for_prods = df_for_prods[df_for_prods["Global_Segment"].isin(eff_segments)]
             if has_bch and len(eff_bchs) > 0:
                 df_for_prods = df_for_prods[df_for_prods["BCH"].isin(eff_bchs)]
+            # Only use products present in the filtered data
             products_filtered = sorted(df_for_prods["Product"].dropna().unique().tolist())
             eff_products = products_filtered
         else:
@@ -346,18 +348,25 @@ combination_lists = [
 combinations = list(itertools.product(*combination_lists))
 
 
-# --- Parallel filter for valid_combinations ---
-def is_valid_combination(combo):
-    country, cat, segment, bch, product = combo
-    df_check = filter_df(
-        df,
-        [country] if country else [],
-        [cat] if cat else [],
-        [bch] if bch else [],
-        [segment] if segment else [],
-        [product] if product else [],
-    )
-    return combo if not df_check.empty else None
+
+# --- Efficient valid combination generation ---
+def get_valid_combinations(df, eff_countries, eff_cats, eff_segments, eff_bchs, eff_products):
+    # Filter DataFrame by selected filters (skip empty lists)
+    d = df.copy()
+    if eff_countries:
+        d = d[d["Country"].isin(eff_countries)]
+    if eff_cats:
+        d = d[d["Global_CAT"].isin(eff_cats)]
+    if eff_segments:
+        d = d[d["Global_Segment"].isin(eff_segments)]
+    if eff_bchs:
+        d = d[d["BCH"].isin(eff_bchs)]
+    if eff_products:
+        d = d[d["Product"].isin(eff_products)]
+    # Get unique combinations of the relevant columns
+    combo_cols = ["Country", "Global_CAT", "Global_Segment", "BCH", "Product"]
+    valid_combos = d[combo_cols].drop_duplicates().values.tolist()
+    return [tuple(row) for row in valid_combos]
 
 
 
@@ -384,23 +393,8 @@ if run_combinations or combo_cache_key in st.session_state.combination_cache:
         combo_start_time = datetime.datetime.now()
         st.write(f"Combinations start time: {combo_start_time.strftime('%Y-%m-%d %H:%M:%S')}")
         progress_bar_combo = st.progress(0, text="Finding valid combinations...")
-        # Partial cache reuse logic
-        already_valid, to_compute = get_cached_valid_combinations(st.session_state.combination_cache, combinations)
-        valid_combinations = list(already_valid)
-        total_combo = len(to_compute)
-        if total_combo > 0:
-            def combo_worker(idx_combo):
-                combo = to_compute[idx_combo]
-                result = is_valid_combination(combo)
-                return (idx_combo, result)
-            with concurrent.futures.ProcessPoolExecutor(max_workers=min(os.cpu_count(), 8)) as executor:
-                futures = [executor.submit(combo_worker, idx) for idx in range(total_combo)]
-                for i, future in enumerate(concurrent.futures.as_completed(futures)):
-                    idx_combo, result = future.result()
-                    if result:
-                        valid_combinations.append(result)
-                    progress = min((i + 1) / (total_combo if total_combo else 1), 1.0)
-                    progress_bar_combo.progress(progress, text=f"Finding valid combinations... ({i+1}/{total_combo})")
+        valid_combinations = get_valid_combinations(df, eff_countries, eff_cats, eff_segments, eff_bchs, eff_products)
+        progress_bar_combo.progress(100, text="Valid combinations found.")
         progress_bar_combo.empty()
         combo_end_time = datetime.datetime.now()
         st.write(f"Combinations end time: {combo_end_time.strftime('%Y-%m-%d %H:%M:%S')}")
