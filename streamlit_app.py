@@ -219,12 +219,13 @@ eff_countries = [sel_country]
 
 
 
-# 2) Bayer (BCH) selection (single selection)
+# 2) Bayer (BCH) selection (multi-select with Select All)
 with col4:
     if has_bch:
-        bch_options = bchs
-        sel_bch = st.selectbox("Bayer", options=bch_options, key="sel_bch")
-        sel_bchs = [sel_bch]
+        bch_options = ["Select All"] + bchs
+        sel_bchs = st.multiselect("Bayer", options=bch_options, default=[], key="sel_bchs")
+        if "Select All" in sel_bchs:
+            sel_bchs = bchs
     else:
         sel_bchs = []
 eff_bchs = sel_bchs
