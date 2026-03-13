@@ -278,16 +278,13 @@ eff_segments = sel_segments
 
 
 # Determine if the Product filter should be shown
-# It should appear if 'Yes' (BCH) is chosen in the Bayer filter.
-# It should be hidden if only 'No' (Others) is selected.
+# Only show if Bayer is BCH; if Bayer is Other, auto-select all products (not shown in UI)
 show_product_filter = False
 if has_prod:
     if not has_bch:
         show_product_filter = True  # No Bayer filter, so always show Product
     elif any(str(x).strip().lower() in ["yes", "bch"] for x in sel_bchs):
         show_product_filter = True
-
-    
 
 # 5) Product (depends on all above)
 with col5:
@@ -309,10 +306,21 @@ with col5:
         )
         if "Select All" in sel_products:
             sel_products = products_filtered
+        eff_products = sel_products
     else:
-        sel_products = []
-        products_filtered = []
-    eff_products = sel_products
+        # If Bayer is Other, auto-select all products for the filtered data, but do not show in UI
+        if has_prod and has_bch and all(str(x).strip().lower() not in ["yes", "bch"] for x in sel_bchs):
+            df_for_prods = df[df["Country"].isin(eff_countries)]
+            if len(eff_cats) > 0:
+                df_for_prods = df_for_prods[df_for_prods["Global_CAT"].isin(eff_cats)]
+            if has_seg and len(eff_segments) > 0:
+                df_for_prods = df_for_prods[df_for_prods["Global_Segment"].isin(eff_segments)]
+            if has_bch and len(eff_bchs) > 0:
+                df_for_prods = df_for_prods[df_for_prods["BCH"].isin(eff_bchs)]
+            products_filtered = sorted(df_for_prods["Product"].dropna().unique().tolist())
+            eff_products = products_filtered
+        else:
+            eff_products = []
 
 st.write("Selected filters:", {
     "Countries": f"{len(eff_countries)} selected",
