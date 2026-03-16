@@ -109,15 +109,15 @@ def split_train_test(s: pd.Series):
 # -----------------------------
 # Model runners (reuse notebook logic)
 # -----------------------------
-def run_pmdarima(y_train, y_test):
-    import pmdarima as pm
-    model = pm.auto_arima(
-        y_train, seasonal=True, m=12, stepwise=True, suppress_warnings=True,
-        error_action="ignore", maxiter=50
-    )
-    preds = model.predict(n_periods=len(y_test))
-    fcst = model.predict(n_periods=12)
-    return preds, fcst, model
+# def run_pmdarima(y_train, y_test):
+#     import pmdarima as pm
+#     model = pm.auto_arima(
+#         y_train, seasonal=True, m=12, stepwise=True, suppress_warnings=True,
+#         error_action="ignore", maxiter=50
+#     )
+#     preds = model.predict(n_periods=len(y_test))
+#     fcst = model.predict(n_periods=12)
+#     return preds, fcst, model
 
 # def run_prophet(y_train, y_test):
 #     from prophet import Prophet

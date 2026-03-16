@@ -406,7 +406,7 @@ if run_combinations or combo_cache_key in st.session_state.combination_cache:
 if valid_combinations is not None:
     num_targets = len(sel_targets or ["Units"])
     enabled_model_keys = [k for k, v in {
-        "pmdarima": True,
+        # "pmdarima": True,
         "skforecast_xgb": True,
         "sktime_es": True,
         "darts_es": True,
@@ -439,7 +439,7 @@ if run or filter_key in st.session_state.results_cache:
 
         all_results = {}
         enabled_model_keys = [k for k, v in {
-            "pmdarima": True,
+            # "pmdarima": True,
             "skforecast_xgb": True,
             "sktime_es": True,
             "darts_es": True,
@@ -486,16 +486,27 @@ if run or filter_key in st.session_state.results_cache:
             for model_name in enabled_model_keys
         ]
 
-        with concurrent.futures.ProcessPoolExecutor(max_workers=min(os.cpu_count(), 8)) as executor:
-            futures = [executor.submit(run_model_task, task) for task in tasks]
-            for future in concurrent.futures.as_completed(futures):
-                combo, target, model_name, result = future.result()
-                combo_key = (combo[0], combo[1], combo[2], combo[3], combo[4], target)
-                if result is not None:
-                    all_results[combo_key] = result
-                model_counter += 1
-                progress = min(model_counter / total_models, 1.0)
-                progress_bar.progress(progress, text=f"Running models... ({model_counter}/{total_models})")
+        batch_size = 200
+        total_tasks = len(tasks)
+        for batch_start in range(0, total_tasks, batch_size):
+            batch_tasks = tasks[batch_start:batch_start+batch_size]
+            with concurrent.futures.ProcessPoolExecutor(max_workers=min(os.cpu_count(), 8)) as executor:
+                futures = [executor.submit(run_model_task, task) for task in batch_tasks]
+                for future in concurrent.futures.as_completed(futures):
+                    try:
+                        combo, target, model_name, result = future.result()
+                    except Exception as e:
+                        st.warning(f"A model run failed: {e}")
+                        model_counter += 1
+                        progress = min(model_counter / total_models, 1.0)
+                        progress_bar.progress(progress, text=f"Running models... ({model_counter}/{total_models})")
+                        continue
+                    combo_key = (combo[0], combo[1], combo[2], combo[3], combo[4], target)
+                    if result is not None:
+                        all_results[combo_key] = result
+                    model_counter += 1
+                    progress = min(model_counter / total_models, 1.0)
+                    progress_bar.progress(progress, text=f"Running models... ({model_counter}/{total_models})")
 
         runtime_end = datetime.datetime.now()
         total_time = runtime_end - runtime_start
@@ -513,7 +524,7 @@ if run or filter_key in st.session_state.results_cache:
 
     # Retrieve cached results
     cached = st.session_state.results_cache[filter_key]
-    enabled_model_keys = ["pmdarima", "skforecast_xgb", "sktime_es", "darts_es", "pydlm", "tsfresh_xgb"]
+    enabled_model_keys = ["skforecast_xgb", "sktime_es", "darts_es", "pydlm", "tsfresh_xgb"]
     num_enabled_models = 0
     for model_name in enabled_model_keys:
         num_enabled_models += 1  # All are enabled in your code
