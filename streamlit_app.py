@@ -460,7 +460,7 @@ if run or (filter_key in st.session_state.results_cache):
             target_progress_bar = st.progress(0, text=f"Running combinations for {target}...")
             target_summary_placeholder = st.empty()
             
-            target_export_df = pd.DataFrame()
+            all_target_rows = []
 
             for i, combo in enumerate(valid_combinations):
                 # For each combination, run all models for the current target
@@ -532,24 +532,26 @@ if run or (filter_key in st.session_state.results_cache):
                         })
                 
                 if combo_export_rows:
-                    new_rows_df = pd.DataFrame(combo_export_rows)
-                    target_export_df = pd.concat([target_export_df, new_rows_df], ignore_index=True)
-
-                    # Display the updated dataframe for the current target
-                    display_df = target_export_df.copy()
-                    display_df["Month"] = pd.to_datetime(display_df["Month"]).dt.strftime("%Y-%m-%d")
-                    forecast_col = f"Forecast_{target}"
-                    if forecast_col in display_df.columns:
-                        display_df[forecast_col] = display_df[forecast_col].round(0).fillna(0).astype(int).apply(format_indian_number)
-                    
-                    with target_summary_placeholder.container():
-                        st.subheader(f"Summary of filters with forecasts ready for export - {target}")
-                        st.dataframe(display_df, use_container_width=True, hide_index=True)
+                    all_target_rows.extend(combo_export_rows)
 
                 # Update progress bar for the current target
                 progress = min((i + 1) / len(valid_combinations), 1.0)
                 target_progress_bar.progress(progress, text=f"Running combinations for {target}... ({i + 1}/{len(valid_combinations)})")
 
+            # After all combinations for the target are done, display the summary table once
+            if all_target_rows:
+                target_export_df = pd.DataFrame(all_target_rows)
+                display_df = target_export_df.copy()
+                display_df["Month"] = pd.to_datetime(display_df["Month"]).dt.strftime("%Y-%m-%d")
+                forecast_col = f"Forecast_{target}"
+                if forecast_col in display_df.columns:
+                    display_df[forecast_col] = display_df[forecast_col].round(0).fillna(0).astype(int).apply(format_indian_number)
+                
+                with target_summary_placeholder.container():
+                    st.subheader(f"Summary of filters with forecasts ready for export - {target}")
+                    st.dataframe(display_df, use_container_width=True, hide_index=True)
+            
+            target_export_df = pd.DataFrame(all_target_rows)
             all_targets_results.append(target_export_df)
             target_progress_bar.empty() # Clear progress bar for the completed target
 
