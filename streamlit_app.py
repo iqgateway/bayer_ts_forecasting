@@ -424,6 +424,10 @@ run = st.button("Run models")
 # Initialize session state for storing results
 if 'results_cache' not in st.session_state:
     st.session_state.results_cache = {}
+if 'progress_bar' not in st.session_state:
+    st.session_state.progress_bar = None
+if 'summary_placeholder' not in st.session_state:
+    st.session_state.summary_placeholder = None
 
 # Create a unique key for current filters
 filter_key = f"{eff_countries}_{eff_cats}_{eff_segments}_{eff_bchs}_{eff_products}_{sel_targets}_{use_tsfresh}_{use_tuning}"
@@ -432,162 +436,190 @@ filter_key = f"{eff_countries}_{eff_cats}_{eff_segments}_{eff_bchs}_{eff_product
 
 
 
-if run or filter_key in st.session_state.results_cache:
+if run or (filter_key in st.session_state.results_cache):
+    
     if run:
         # Clear old cache and compute new results
         st.session_state.results_cache = {}
 
-        all_results = {}
         enabled_model_keys = [k for k, v in {
-            # "pmdarima": True,
             "skforecast_xgb": True,
             "sktime_es": True,
             "darts_es": True,
             "pydlm": True,
             "tsfresh_xgb": True
         }.items() if v]
-        total_models = len(valid_combinations) * len(sel_targets or ["Units"]) * len(enabled_model_keys)
-        progress_bar = st.progress(0, text="Running models...")
-        model_counter = 0
-
+        
         runtime_start = datetime.datetime.now()
+        
+        all_targets_results = []
 
-        # --- Parallel model runs ---
-        def run_model_task(args):
-            combo, target, model_name, use_tuning = args
-            country, cat, segment, bch, product = combo
-            df_filt = filter_df(
-                df,
-                [country] if country else [],
-                [cat] if cat else [],
-                [bch] if bch else [],
-                [segment] if segment else [],
-                [product] if product else [],
-            )
-            if df_filt.empty:
-                return (combo, target, model_name, None)
-            series = build_series(df_filt, target_col=target)
-            single_enable = {k: (k == model_name) for k in enabled_model_keys}
-            results_df, best_model, test_compare, all_forecasts, model_name_mapping = evaluate_models(
-                series, single_enable, target_name=target, tune=use_tuning
-            )
-            return (combo, target, model_name, {
-                'results_df': results_df,
-                'best_model': best_model,
-                'test_compare': test_compare,
-                'all_forecasts': all_forecasts,
-                'model_name_mapping': model_name_mapping
-            })
-
-        tasks = [
-            (combo, target, model_name, use_tuning)
-            for combo in valid_combinations
-            for target in (sel_targets or ["Units"])
-            for model_name in enabled_model_keys
-        ]
-
-        batch_size = 200
-        total_tasks = len(tasks)
-        for batch_start in range(0, total_tasks, batch_size):
-            batch_tasks = tasks[batch_start:batch_start+batch_size]
-            with concurrent.futures.ProcessPoolExecutor(max_workers=min(os.cpu_count(), 8)) as executor:
-                futures = [executor.submit(run_model_task, task) for task in batch_tasks]
-                for future in concurrent.futures.as_completed(futures):
-                    try:
-                        combo, target, model_name, result = future.result()
-                    except Exception as e:
-                        st.warning(f"A model run failed: {e}")
-                        model_counter += 1
-                        progress = min(model_counter / total_models, 1.0)
-                        progress_bar.progress(progress, text=f"Running models... ({model_counter}/{total_models})")
-                        continue
-                    combo_key = (combo[0], combo[1], combo[2], combo[3], combo[4], target)
-                    if result is not None:
-                        all_results[combo_key] = result
-                    model_counter += 1
-                    progress = min(model_counter / total_models, 1.0)
-                    progress_bar.progress(progress, text=f"Running models... ({model_counter}/{total_models})")
-
-        runtime_end = datetime.datetime.now()
-        total_time = runtime_end - runtime_start
-        progress_bar.empty()  # Remove progress bar when done
-
-        st.session_state.results_cache[filter_key] = {
-            'all_results': all_results,
-            'targets': sel_targets,
-            'combinations': valid_combinations,
-            'runtime_start': runtime_start,
-            'runtime_end': runtime_end,
-            'total_time': total_time,
-        }
-
-
-    # Retrieve cached results
-    cached = st.session_state.results_cache[filter_key]
-    enabled_model_keys = ["skforecast_xgb", "sktime_es", "darts_es", "pydlm", "tsfresh_xgb"]
-    num_enabled_models = 0
-    for model_name in enabled_model_keys:
-        num_enabled_models += 1  # All are enabled in your code
-    total_models = len(valid_combinations) * len(sel_targets or ["Units"]) * num_enabled_models
-    all_results = cached['all_results']
-    valid_combinations = cached['combinations']
-    runtime_start = cached.get('runtime_start', None)
-    runtime_end = cached.get('runtime_end', None)
-    total_time = cached.get('total_time', None)
-
-    # Show runtime info above export summary
-    if runtime_start and runtime_end and total_time:
-        st.markdown(f"**Runtime start:** {runtime_start.strftime('%Y-%m-%d %H:%M:%S')}")
-        st.markdown(f"**Runtime end:** {runtime_end.strftime('%Y-%m-%d %H:%M:%S')}")
-        st.markdown(f"**Total time taken:** {str(total_time).split('.')[0]}")
-
-    # Build export summary for all combinations
-    export_rows = []
-    for combo in valid_combinations:
-        country, cat, segment, bch, product = combo
+        # --- Process target by target ---
         for target in (sel_targets or ["Units"]):
-            combo_key = (country, cat, segment, bch, product, target)
-            result = all_results.get(combo_key)
-            if not result:
-                continue
-            all_forecasts = result['all_forecasts']
-            best_model = result['best_model']
-            if best_model and best_model in all_forecasts:
-                df_out = all_forecasts[best_model]
-            elif all_forecasts:
-                df_out = next(iter(all_forecasts.values()))
-            else:
-                continue
-            col_name = f"Forecast_{target}"
-            for _, row in df_out.iterrows():
-                export_rows.append({
-                    "Country": country,
-                    "Global_CAT": cat,
-                    "Global_Segment": segment,
-                    "BCH": bch,
-                    "Product": product,
-                    "Month": row["Month"],
-                    col_name: row[col_name],
-                })
+            st.markdown(f"### Processing Target: {target}")
+            target_progress_bar = st.progress(0, text=f"Running combinations for {target}...")
+            target_summary_placeholder = st.empty()
+            
+            target_export_df = pd.DataFrame()
 
-    if export_rows:
-        export_df = pd.DataFrame(export_rows)
-        if len(sel_targets) > 1:
-            export_df = export_df.pivot_table(
-                index=["Country", "Global_CAT", "Global_Segment", "BCH", "Product", "Month"],
-                values=[f"Forecast_{t}" for t in sel_targets],
-                aggfunc="first"
-            ).reset_index()
-        # Format Month and forecast columns
-        if "Month" in export_df.columns:
-            export_df["Month"] = pd.to_datetime(export_df["Month"]).dt.strftime("%Y-%m-%d")
-        forecast_cols = [c for c in export_df.columns if c.startswith("Forecast_")]
-        for col in forecast_cols:
-            export_df[col] = export_df[col].round(0).fillna(0).astype(int)
-            export_df[col] = export_df[col].apply(format_indian_number)
-        st.subheader("Summary of filters with forecasts ready for export")
-        st.dataframe(export_df, use_container_width=True, hide_index=True)
-    else:
-        st.warning("No data for the selected combinations.")
+            for i, combo in enumerate(valid_combinations):
+                # For each combination, run all models for the current target
+                combo_tasks = []
+                for model_name in enabled_model_keys:
+                    combo_tasks.append((combo, target, model_name, use_tuning))
+
+                combo_results = {}
+                
+                def run_model_task(args):
+                    combo, target, model_name, use_tuning = args
+                    country, cat, segment, bch, product = combo
+                    df_filt = filter_df(
+                        df,
+                        [country] if country else [], [cat] if cat else [],
+                        [bch] if bch else [], [segment] if segment else [],
+                        [product] if product else [],
+                    )
+                    if df_filt.empty: return (combo, target, model_name, None)
+                    series = build_series(df_filt, target_col=target)
+                    single_enable = {k: (k == model_name) for k in enabled_model_keys}
+                    results_df, best_model, test_compare, all_forecasts, model_name_mapping = evaluate_models(
+                        series, single_enable, target_name=target, tune=use_tuning
+                    )
+                    return (combo, target, model_name, {
+                        'results_df': results_df, 'best_model': best_model,
+                        'test_compare': test_compare, 'all_forecasts': all_forecasts,
+                        'model_name_mapping': model_name_mapping
+                    })
+
+                with concurrent.futures.ProcessPoolExecutor(max_workers=min(os.cpu_count(), 8)) as executor:
+                    futures = [executor.submit(run_model_task, task) for task in combo_tasks]
+                    for future in concurrent.futures.as_completed(futures):
+                        try:
+                            f_combo, f_target, f_model_name, f_result = future.result()
+                            if f_result:
+                                combo_key = (f_combo[0], f_combo[1], f_combo[2], f_combo[3], f_combo[4], f_target)
+                                if combo_key not in combo_results:
+                                    combo_results[combo_key] = {'all_forecasts': {}}
+                                for model, forecast in f_result['all_forecasts'].items():
+                                    combo_results[combo_key]['all_forecasts'][model] = forecast
+                                if f_result.get('best_model'):
+                                    combo_results[combo_key]['best_model'] = f_result['best_model']
+                        except Exception as e:
+                            st.warning(f"A model run for combination {combo} failed: {e}")
+                            continue
+                
+                # Process results for the current combination
+                combo_export_rows = []
+                for combo_key, result in combo_results.items():
+                    country, cat, segment, bch, product, res_target = combo_key
+                    if not result: continue
+                    
+                    all_forecasts = result.get('all_forecasts', {})
+                    best_model = result.get('best_model')
+
+                    df_out = all_forecasts.get(best_model)
+                    if df_out is None:
+                        df_out = next(iter(all_forecasts.values()), None)
+                    
+                    if df_out is None: continue
+
+                    col_name = f"Forecast_{res_target}"
+                    for _, row in df_out.iterrows():
+                        combo_export_rows.append({
+                            "Country": country, "Global_CAT": cat, "Global_Segment": segment,
+                            "BCH": bch, "Product": product, "Month": row["Month"],
+                            col_name: row[col_name],
+                        })
+                
+                if combo_export_rows:
+                    new_rows_df = pd.DataFrame(combo_export_rows)
+                    target_export_df = pd.concat([target_export_df, new_rows_df], ignore_index=True)
+
+                    # Display the updated dataframe for the current target
+                    display_df = target_export_df.copy()
+                    display_df["Month"] = pd.to_datetime(display_df["Month"]).dt.strftime("%Y-%m-%d")
+                    forecast_col = f"Forecast_{target}"
+                    if forecast_col in display_df.columns:
+                        display_df[forecast_col] = display_df[forecast_col].round(0).fillna(0).astype(int).apply(format_indian_number)
+                    
+                    with target_summary_placeholder.container():
+                        st.subheader(f"Summary of filters with forecasts ready for export - {target}")
+                        st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+                # Update progress bar for the current target
+                progress = min((i + 1) / len(valid_combinations), 1.0)
+                target_progress_bar.progress(progress, text=f"Running combinations for {target}... ({i + 1}/{len(valid_combinations)})")
+
+            all_targets_results.append(target_export_df)
+            target_progress_bar.empty() # Clear progress bar for the completed target
+
+        # --- Final Merging and Display ---
+        if not all_targets_results:
+            st.warning("No results were generated.")
+        else:
+            # Merge all target dataframes
+            final_export_df = all_targets_results[0]
+            for i in range(1, len(all_targets_results)):
+                merge_cols = ["Country", "Global_CAT", "Global_Segment", "BCH", "Product", "Month"]
+                final_export_df = pd.merge(final_export_df, all_targets_results[i], on=merge_cols, how="outer")
+
+            runtime_end = datetime.datetime.now()
+            total_time = runtime_end - runtime_start
+            
+            st.markdown(f"**Runtime start:** {runtime_start.strftime('%Y-%m-%d %H:%M:%S')}")
+            st.markdown(f"**Runtime end:** {runtime_end.strftime('%Y-%m-%d %H:%M:%S')}")
+            st.markdown(f"**Total time taken:** {str(total_time).split('.')[0]}")
+
+            # Display final combined table at the bottom
+            st.subheader("Final Combined Forecast Summary")
+            display_df = final_export_df.copy()
+            display_df["Month"] = pd.to_datetime(display_df["Month"]).dt.strftime("%Y-%m-%d")
+            forecast_cols = [c for c in display_df.columns if c.startswith("Forecast_")]
+            for col in forecast_cols:
+                if col in display_df.columns:
+                    display_df[col] = display_df[col].round(0).fillna(0).astype(int).apply(format_indian_number)
+            st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+            # Final results storage
+            st.session_state.results_cache[filter_key] = {
+                'export_df': final_export_df.to_dict('records'),
+                'targets': sel_targets,
+                'combinations': valid_combinations,
+                'runtime_start': runtime_start,
+                'runtime_end': runtime_end,
+                'total_time': total_time,
+            }
+
+
+    # This part of the code is now mostly for reloading from cache
+    cached = st.session_state.results_cache.get(filter_key)
+    if cached and not run: # Only display from cache if not a new run
+        runtime_start = cached.get('runtime_start')
+        runtime_end = cached.get('runtime_end')
+        total_time = cached.get('total_time')
+
+        if runtime_start and runtime_end and total_time:
+            st.markdown(f"**Runtime start:** {runtime_start.strftime('%Y-%m-%d %H:%M:%S')}")
+            st.markdown(f"**Runtime end:** {runtime_end.strftime('%Y-%m-%d %H:%M:%S')}")
+            st.markdown(f"**Total time taken:** {str(total_time).split('.')[0]}")
+
+        export_df_records = cached.get('export_df')
+        if export_df_records:
+            export_df = pd.DataFrame(export_df_records)
+            if "Month" in export_df.columns:
+                export_df["Month"] = pd.to_datetime(export_df["Month"]).dt.strftime("%Y-%m-%d")
+            forecast_cols = [c for c in export_df.columns if c.startswith("Forecast_")]
+            for col in forecast_cols:
+                export_df[col] = pd.to_numeric(export_df[col], errors='coerce').round(0).fillna(0).astype(int)
+                export_df[col] = export_df[col].apply(format_indian_number)
+            
+            summary_placeholder = st.empty()
+            with summary_placeholder.container():
+                st.subheader("Summary of filters with forecasts ready for export")
+                st.dataframe(export_df, use_container_width=True, hide_index=True)
+        else:
+            st.warning("No data for the selected combinations.")
+elif not run:
+    st.info("Select filters and click 'Run models' to start.")
  
 # -----------------------------
