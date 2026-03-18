@@ -505,7 +505,7 @@ if run or (filter_key in st.session_state.results_cache):
                                 if f_result.get('best_model'):
                                     combo_results[combo_key]['best_model'] = f_result['best_model']
                         except Exception as e:
-                            st.warning(f"A model run for combination {combo} failed: {e}")
+                            print(f"A model run for combination {combo} failed: {e}")
                             continue
                 
                 # Process results for the current combination
