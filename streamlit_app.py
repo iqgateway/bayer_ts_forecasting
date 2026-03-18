@@ -1,9 +1,9 @@
 import os
 # Limit thread usage for numpy/pandas/scipy multi-threaded libraries
-os.environ["OMP_NUM_THREADS"] = "2"
-os.environ["MKL_NUM_THREADS"] = "2"
-os.environ["OPENBLAS_NUM_THREADS"] = "2"
-os.environ["NUMEXPR_NUM_THREADS"] = "2"
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -491,7 +491,7 @@ if run or (filter_key in st.session_state.results_cache):
                         'model_name_mapping': model_name_mapping
                     })
 
-                with concurrent.futures.ProcessPoolExecutor(max_workers=min(os.cpu_count(), 12)) as executor:
+                with concurrent.futures.ProcessPoolExecutor() as executor:
                     futures = [executor.submit(run_model_task, task) for task in combo_tasks]
                     for future in concurrent.futures.as_completed(futures):
                         try:
