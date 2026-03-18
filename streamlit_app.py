@@ -9,6 +9,9 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
+import sqlite3
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 from timeseries_utils import (
     load_and_prepare, filter_df, build_series, evaluate_models
@@ -460,7 +463,12 @@ if run or (filter_key in st.session_state.results_cache):
             target_progress_bar = st.progress(0, text=f"Running combinations for {target}...")
             target_summary_placeholder = st.empty()
             
-            all_target_rows = []
+            # Define a temporary parquet file for the current target
+            temp_parquet_file = f"temp_results_{target}.parquet"
+            
+            # Clean up any old temp file before starting
+            if os.path.exists(temp_parquet_file):
+                os.remove(temp_parquet_file)
 
             for i, combo in enumerate(valid_combinations):
                 # For each combination, run all models for the current target
@@ -508,7 +516,7 @@ if run or (filter_key in st.session_state.results_cache):
                             print(f"A model run for combination {combo} failed: {e}")
                             continue
                 
-                # Process results for the current combination
+                # Process results for the current combination and append to Parquet
                 combo_export_rows = []
                 for combo_key, result in combo_results.items():
                     country, cat, segment, bch, product, res_target = combo_key
@@ -532,15 +540,28 @@ if run or (filter_key in st.session_state.results_cache):
                         })
                 
                 if combo_export_rows:
-                    all_target_rows.extend(combo_export_rows)
+                    new_data_df = pd.DataFrame(combo_export_rows)
+                    
+                    # Read existing data, concatenate, and write back
+                    if os.path.exists(temp_parquet_file):
+                        existing_df = pq.read_table(temp_parquet_file).to_pandas()
+                        combined_df = pd.concat([existing_df, new_data_df], ignore_index=True)
+                    else:
+                        combined_df = new_data_df
+
+                    # Write the combined data back to the Parquet file
+                    table = pa.Table.from_pandas(combined_df)
+                    pq.write_table(table, temp_parquet_file)
 
                 # Update progress bar for the current target
                 progress = min((i + 1) / len(valid_combinations), 1.0)
                 target_progress_bar.progress(progress, text=f"Running combinations for {target}... ({i + 1}/{len(valid_combinations)})")
 
-            # After all combinations for the target are done, display the summary table once
-            if all_target_rows:
-                target_export_df = pd.DataFrame(all_target_rows)
+            # After all combinations for the target are done, read from Parquet and display
+            target_export_df = pd.DataFrame()
+            if os.path.exists(temp_parquet_file):
+                target_export_df = pq.read_table(temp_parquet_file).to_pandas()
+                
                 display_df = target_export_df.copy()
                 display_df["Month"] = pd.to_datetime(display_df["Month"]).dt.strftime("%Y-%m-%d")
                 forecast_col = f"Forecast_{target}"
@@ -550,8 +571,10 @@ if run or (filter_key in st.session_state.results_cache):
                 with target_summary_placeholder.container():
                     st.subheader(f"Summary of filters with forecasts ready for export - {target}")
                     st.dataframe(display_df, use_container_width=True, hide_index=True)
+                
+                # Clean up the temp file
+                os.remove(temp_parquet_file)
             
-            target_export_df = pd.DataFrame(all_target_rows)
             all_targets_results.append(target_export_df)
             target_progress_bar.empty() # Clear progress bar for the completed target
 
