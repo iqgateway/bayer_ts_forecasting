@@ -499,7 +499,7 @@ if run or (filter_key in st.session_state.results_cache):
                         'model_name_mapping': model_name_mapping
                     })
 
-                with concurrent.futures.ProcessPoolExecutor(max_workers=12) as executor:
+                with concurrent.futures.ProcessPoolExecutor(max_workers=10) as executor:
                     futures = [executor.submit(run_model_task, task) for task in combo_tasks]
                     for future in concurrent.futures.as_completed(futures):
                         try:
