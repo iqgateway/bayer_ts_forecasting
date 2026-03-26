@@ -646,5 +646,14 @@ if run or (filter_key in st.session_state.results_cache):
             st.warning("No data for the selected combinations.")
 elif not run:
     st.info("Select filters and click 'Run models' to start.")
+
+# -----------------------------
+# File Upload Test Section
+# -----------------------------
+st.markdown("---")
+st.subheader("File Upload Test")
+uploaded_file = st.file_uploader("Upload a CSV file to test file size limit", type=["csv"])
+if uploaded_file is not None:
+    st.success(f"File uploaded successfully! File name: {uploaded_file.name}, Size: {uploaded_file.size / (1024*1024):.2f} MB")
  
 # -----------------------------
