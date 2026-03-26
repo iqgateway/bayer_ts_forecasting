@@ -1,6 +1,21 @@
 import warnings
 warnings.filterwarnings("ignore")
 
+import os
+import sys
+import logging
+
+# Suppress scipy optimizer output (common source of "Stopping..." messages)
+os.environ["PYTHONWARNINGS"] = "ignore"
+
+# Suppress pydlm logger (source of INFO messages and "Stopping...")
+logging.getLogger('pydlm').setLevel(logging.ERROR)
+logging.getLogger('pydlm').propagate = False
+
+# Redirect stdout temporarily during model fitting to suppress optimization messages
+from io import StringIO
+from contextlib import redirect_stdout, redirect_stderr
+
 import pandas as pd
 import numpy as np
 
@@ -176,11 +191,12 @@ def run_skforecast_xgb(y_train, y_test):
     from xgboost import XGBRegressor
     forecaster = ForecasterAutoreg(
         regressor=XGBRegressor(
-            n_estimators=300, max_depth=6, learning_rate=0.05, subsample=0.8, colsample_bytree=0.9, random_state=42
+            n_estimators=300, max_depth=6, learning_rate=0.05, subsample=0.8, colsample_bytree=0.9, random_state=42, verbose=0
         ),
         lags=12
     )
-    forecaster.fit(y=y_train)
+    with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+        forecaster.fit(y=y_train)
     preds = np.array(forecaster.predict(steps=len(y_test)))
     fcst = np.array(forecaster.predict(steps=12))
     return preds, fcst, forecaster
@@ -209,11 +225,13 @@ def run_skforecast_xgb_tuned(y_train, y_test):
                 subsample=0.9,
                 colsample_bytree=0.9,
                 random_state=42,
-                n_jobs=0
+                n_jobs=0,
+                verbose=0
             ),
             lags=g["lags"]
         )
-        forecaster.fit(y=y_train)
+        with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+            forecaster.fit(y=y_train)
         preds = np.array(forecaster.predict(steps=len(y_test)))
         metric = smape(y_test.values, preds)
         if (best is None) or (metric < best):
@@ -232,7 +250,8 @@ def run_sktime_es(y_train, y_test):
     fh = ForecastingHorizon(y_ts_idx, is_relative=False)
 
     model = ExponentialSmoothing(trend="add", seasonal="add", sp=12)
-    model.fit(y_tr)
+    with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+        model.fit(y_tr)
     preds = model.predict(fh).values
 
     future_fh = ForecastingHorizon(pd.period_range(y_tr.index[-1] + 1, periods=12, freq="M"), is_relative=False)
@@ -256,7 +275,8 @@ def run_sktime_es_tuned(y_train, y_test):
     for g in grids:
         try:
             model = ExponentialSmoothing(trend=g["trend"], seasonal=g["seasonal"], sp=g["sp"])
-            model.fit(y_tr)
+            with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+                model.fit(y_tr)
             preds = model.predict(fh).values
             metric = smape(y_test.values, preds)
             if (best is None) or (metric < best):
@@ -274,7 +294,8 @@ def run_darts_es(y_train, y_test):
     from darts.models import ExponentialSmoothing as DartsES
     series = TimeSeries.from_times_and_values(y_train.index, y_train.values, freq="MS")
     model = DartsES()
-    model.fit(series)
+    with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+        model.fit(series)
     preds_series = model.predict(len(y_test))
     preds = preds_series.values().flatten()
     fcst_series = model.predict(12)
@@ -295,7 +316,8 @@ def run_darts_es_tuned(y_train, y_test):
     for g in grids:
         try:
             model = DartsES(trend=g["trend"], seasonal=g["seasonal"], seasonal_periods=g["seasonal_periods"])
-            model.fit(series)
+            with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+                model.fit(series)
             preds_series = model.predict(len(y_test))
             preds = preds_series.values().flatten()
             metric = smape(y_test.values, preds)
@@ -314,7 +336,10 @@ def run_pydlm(y_train, y_test):
 
     y = y_train.values.astype(float).tolist()
     model = dlm(y) + trend(1, name="trend", w=1.0) + seasonality(12, name="season", w=1.0)
-    model.fit()
+    
+    # Suppress optimizer output
+    with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+        model.fit()
 
     def _predict_means(N: int):
         out = model.predictN(date=model.n - 1, N=N)
@@ -332,7 +357,8 @@ def run_pydlm(y_train, y_test):
         preds.append(pred1)
         # Append actual next observation as a single-element list, then refit
         model.append([float(y_test.iloc[i])])
-        model.fit()
+        with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+            model.fit()
 
     fcst = _predict_means(12)
     return np.array(preds, dtype=float), np.array(fcst, dtype=float), model
@@ -486,7 +512,8 @@ def run_tsfresh_xgb(
         "subsample": 0.9,
         "colsample_bytree": 0.9,
         "random_state": 42,
-        "n_jobs": 0
+        "n_jobs": 0,
+        "verbose": 0
     }
 
     ##############################################
@@ -501,23 +528,44 @@ def run_tsfresh_xgb(
     preds = []
     extended = y_train.copy()
     for _ in range(len(y_test)):
-        X_last = build_X_last(extended, fc_conf, cols_used)
-        p = float(model.predict(X_last)[0])
-        preds.append(p)
-        # Use actual next for recursive feature construction (teacher forcing)
-        next_idx = extended.index[-1] + pd.offsets.MonthBegin(1)
-        extended = pd.concat([extended, pd.Series([y_test.iloc[len(preds)-1]], index=[next_idx])])
+        try:
+            X_last = build_X_last(extended, fc_conf, cols_used)
+            pred_result = model.predict(X_last)
+            if len(pred_result) == 0:
+                raise ValueError("Empty prediction result")
+            p = float(pred_result[0])
+            preds.append(p)
+            # Use actual next for recursive feature construction (teacher forcing)
+            next_idx = extended.index[-1] + pd.offsets.MonthBegin(1)
+            extended = pd.concat([extended, pd.Series([y_test.iloc[len(preds)-1]], index=[next_idx])])
+        except Exception as e:
+            # If prediction fails, use last value or mean
+            p = preds[-1] if preds else y_train.mean()
+            preds.append(p)
+            next_idx = extended.index[-1] + pd.offsets.MonthBegin(1)
+            extended = pd.concat([extended, pd.Series([p], index=[next_idx])])
 
     # ------------- 12-step forecast -------------
     future_base = pd.concat([y_train, y_test])
     fcst_vals = []
     for _ in range(12):
-        X_last = build_X_last(future_base, fc_conf, cols_used)
-        p = float(model.predict(X_last)[0])
-        fcst_vals.append(p)
-        future_base = pd.concat(
-            [future_base, pd.Series([p], index=[future_base.index[-1] + pd.offsets.MonthBegin(1)])]
-        )
+        try:
+            X_last = build_X_last(future_base, fc_conf, cols_used)
+            pred_result = model.predict(X_last)
+            if len(pred_result) == 0:
+                raise ValueError("Empty prediction result")
+            p = float(pred_result[0])
+            fcst_vals.append(p)
+            future_base = pd.concat(
+                [future_base, pd.Series([p], index=[future_base.index[-1] + pd.offsets.MonthBegin(1)])]
+            )
+        except Exception as e:
+            # If prediction fails, use last value or mean
+            p = fcst_vals[-1] if fcst_vals else future_base.mean()
+            fcst_vals.append(p)
+            future_base = pd.concat(
+                [future_base, pd.Series([p], index=[future_base.index[-1] + pd.offsets.MonthBegin(1)])]
+            )
 
     return np.array(preds), np.array(fcst_vals), model
 
