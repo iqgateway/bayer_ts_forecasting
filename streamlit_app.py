@@ -570,7 +570,7 @@ if run or (filter_key in st.session_state.results_cache):
                 
                 with target_summary_placeholder.container():
                     st.subheader(f"Summary of filters with forecasts ready for export - {target}")
-                    st.dataframe(display_df, use_container_width=True, hide_index=True)
+                    st.dataframe(display_df, width='stretch', hide_index=True)
                 
                 # Clean up the temp file
                 os.remove(temp_parquet_file)
@@ -603,7 +603,7 @@ if run or (filter_key in st.session_state.results_cache):
             for col in forecast_cols:
                 if col in display_df.columns:
                     display_df[col] = display_df[col].round(0).fillna(0).astype(int).apply(format_indian_number)
-            st.dataframe(display_df, use_container_width=True, hide_index=True)
+            st.dataframe(display_df, width='stretch', hide_index=True)
 
             # Final results storage
             st.session_state.results_cache[filter_key] = {
@@ -641,7 +641,7 @@ if run or (filter_key in st.session_state.results_cache):
             summary_placeholder = st.empty()
             with summary_placeholder.container():
                 st.subheader("Summary of filters with forecasts ready for export")
-                st.dataframe(export_df, use_container_width=True, hide_index=True)
+                st.dataframe(export_df, width='stretch', hide_index=True)
         else:
             st.warning("No data for the selected combinations.")
 elif not run:
