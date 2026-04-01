@@ -30,5 +30,5 @@ ENV PATH="/root/.local/bin:${PATH}"
 ENV STREAMLIT_SERVER_PORT 8501
 ENV STREAMLIT_SERVER_ADDRESS 0.0.0.0
 
-# Run streamlit_app.py when the container launches
-CMD ["uv", "run", "streamlit", "run", "streamlit_app.py", "--server.port=8501", "--server.address=0.0.0.0", "--server.maxUploadSize=2000"]
+# Run the container
+CMD ["tail", "-f", "/dev/null"]
