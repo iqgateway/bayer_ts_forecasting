@@ -599,6 +599,11 @@ if st.session_state.get('should_auto_resume', False) and st.session_state.get('a
             import shutil
             shutil.rmtree(CHECKPOINT_DIR, ignore_errors=True)
             os.makedirs(CHECKPOINT_DIR, exist_ok=True)
+            # Clean up any temp parquet files
+            import glob
+            for temp_file in glob.glob("temp_results_*.parquet"):
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
             st.session_state.should_auto_resume = False
             st.session_state.pop('auto_resume_state', None)
             st.success("✅ Cleared previous job. Select new filters below.")
@@ -740,8 +745,20 @@ if run or (filter_key in st.session_state.results_cache) or st.session_state.get
                     # Target already completed - load existing results if available
                     completed_targets.add(target)  # Track that this target is done
                     if os.path.exists(temp_parquet_file):
+                        st.markdown(f"### Processing Target: {target}")
                         st.success(f"✅ Target '{target}' already completed - loading existing results")
                         target_export_df = pq.read_table(temp_parquet_file).to_pandas()
+                        
+                        # Display the summary for the completed target
+                        display_df = target_export_df.copy()
+                        display_df["Month"] = pd.to_datetime(display_df["Month"]).dt.strftime("%Y-%m-%d")
+                        forecast_col = f"Forecast_{target}"
+                        if forecast_col in display_df.columns:
+                            display_df[forecast_col] = display_df[forecast_col].round(0).fillna(0).astype(int).apply(format_indian_number)
+                        
+                        st.subheader(f"Summary of filters with forecasts ready for export - {target}")
+                        st.dataframe(display_df, width='stretch', hide_index=True)
+                        
                         all_targets_results.append(target_export_df)
                     else:
                         st.success(f"✅ Target '{target}' already completed in previous run - skipping")
@@ -865,8 +882,7 @@ if run or (filter_key in st.session_state.results_cache) or st.session_state.get
                     st.subheader(f"Summary of filters with forecasts ready for export - {target}")
                     st.dataframe(display_df, width='stretch', hide_index=True)
                 
-                # Clean up the temp file
-                os.remove(temp_parquet_file)
+                # Keep temp file for resume status checking - only delete when all targets done
             
             all_targets_results.append(target_export_df)
             target_progress_bar.empty() # Clear progress bar for the completed target
@@ -878,8 +894,13 @@ if run or (filter_key in st.session_state.results_cache) or st.session_state.get
             
             # Check if all targets from the original configuration are complete
             if len(completed_targets) == len(total_targets):
-                # All targets done - clear job state
+                # All targets done - clear job state and cleanup temp files
                 clear_job_state()
+                # Clean up all temp parquet files
+                for t in total_targets:
+                    temp_file = f"temp_results_{t}.parquet"
+                    if os.path.exists(temp_file):
+                        os.remove(temp_file)
                 st.success("🎉 All targets completed! Job state cleared.")
 
         # --- Final Merging and Display ---
@@ -911,6 +932,11 @@ if run or (filter_key in st.session_state.results_cache) or st.session_state.get
 
             # Clear job state since all targets completed successfully
             clear_job_state()
+            # Clean up any remaining temp parquet files
+            for t in total_targets:
+                temp_file = f"temp_results_{t}.parquet"
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
             st.session_state.should_auto_resume = False
             st.session_state.pop('auto_resume_state', None)
             
