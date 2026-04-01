@@ -195,6 +195,125 @@ except Exception:
     st.title("Bayer Time Series Forecasting")
 
 
+# ==================== CHECKPOINT/RESUME SETUP ====================
+
+# Checkpoint and job state file paths
+CHECKPOINT_DIR = os.path.join(os.path.dirname(__file__), "checkpoints")
+JOB_STATE_FILE = os.path.join(os.path.dirname(__file__), "job_state.pkl")
+
+# Create checkpoint directory
+os.makedirs(CHECKPOINT_DIR, exist_ok=True)
+
+
+def save_job_state(filter_config, valid_combinations):
+    """Save the current job configuration for auto-resume"""
+    try:
+        state = {
+            'filter_config': filter_config,
+            'valid_combinations': valid_combinations,
+            'timestamp': datetime.datetime.now().isoformat()
+        }
+        with open(JOB_STATE_FILE, 'wb') as f:
+            pickle.dump(state, f)
+    except Exception as e:
+        st.warning(f"Failed to save job state: {e}")
+
+
+def load_job_state():
+    """Load saved job state if exists"""
+    if os.path.exists(JOB_STATE_FILE):
+        try:
+            with open(JOB_STATE_FILE, 'rb') as f:
+                return pickle.load(f)
+        except Exception:
+            return None
+    return None
+
+
+def clear_job_state():
+    """Clear saved job state"""
+    if os.path.exists(JOB_STATE_FILE):
+        try:
+            os.remove(JOB_STATE_FILE)
+        except Exception:
+            pass
+
+
+def get_checkpoint_file(target):
+    """Get checkpoint file path for a target"""
+    safe_target = target.replace(' ', '_').replace('/', '_')
+    return os.path.join(CHECKPOINT_DIR, f"checkpoint_{safe_target}.pkl")
+
+
+def load_checkpoint(target):
+    """Load checkpoint - returns set of completed combination indices"""
+    checkpoint_file = get_checkpoint_file(target)
+    if os.path.exists(checkpoint_file):
+        try:
+            with open(checkpoint_file, 'rb') as f:
+                data = pickle.load(f)
+            return data.get('completed_indices', set())
+        except Exception as e:
+            st.warning(f"Failed to load checkpoint for {target}: {e}")
+            return set()
+    return set()
+
+
+def save_checkpoint(target, completed_indices, total):
+    """Save checkpoint"""
+    checkpoint_file = get_checkpoint_file(target)
+    try:
+        data = {
+            'completed_indices': completed_indices,
+            'total_combinations': total,
+            'last_updated': datetime.datetime.now().isoformat()
+        }
+        with open(checkpoint_file, 'wb') as f:
+            pickle.dump(data, f)
+    except Exception as e:
+        st.warning(f"Failed to save checkpoint for {target}: {e}")
+
+
+def clear_checkpoint(target):
+    """Clear checkpoint file when target completes"""
+    checkpoint_file = get_checkpoint_file(target)
+    if os.path.exists(checkpoint_file):
+        try:
+            os.remove(checkpoint_file)
+        except Exception:
+            pass
+
+
+def has_active_checkpoint():
+    """Check if there's an active checkpoint"""
+    if not os.path.exists(CHECKPOINT_DIR):
+        return False
+    checkpoint_files = [f for f in os.listdir(CHECKPOINT_DIR) if f.startswith('checkpoint_')]
+    return len(checkpoint_files) > 0
+
+
+# Check for active checkpoint on app startup
+if 'auto_resume_checked' not in st.session_state:
+    st.session_state.auto_resume_checked = True
+    
+    if has_active_checkpoint():
+        saved_state = load_job_state()
+        
+        if saved_state:
+            st.session_state.auto_resume_state = saved_state
+            st.session_state.should_auto_resume = True
+        else:
+            # Checkpoint exists but no job state - clear orphaned checkpoints
+            import shutil
+            shutil.rmtree(CHECKPOINT_DIR, ignore_errors=True)
+            os.makedirs(CHECKPOINT_DIR, exist_ok=True)
+    else:
+        st.session_state.should_auto_resume = False
+
+
+# ==================== END CHECKPOINT SETUP ====================
+
+
 countries = sorted(df["Country"].dropna().unique().tolist())
 cats_all = sorted(df["Global_CAT"].dropna().unique().tolist())
 has_bch = "BCH" in df.columns
@@ -335,6 +454,51 @@ st.write("Selected filters:", {
     "Product": f"{len(eff_products)} selected" if has_prod else "N/A",
 })
 
+
+# ==================== AUTO-RESUME NOTIFICATION ====================
+
+# Check if there's a job to auto-resume
+if st.session_state.get('should_auto_resume', False) and st.session_state.get('auto_resume_state'):
+    saved_state = st.session_state.auto_resume_state
+    
+    st.info("🔄 **Detected Incomplete Job from Previous Session**")
+    
+    col_resume_info, col_resume_actions = st.columns([3, 1])
+    
+    with col_resume_info:
+        st.write(f"**Saved Configuration:**")
+        config = saved_state['filter_config']
+        st.write(f"- Countries: {config['countries']}")
+        st.write(f"- Categories: {len(config.get('cats', []))} selected")
+        st.write(f"- Targets: {config['targets']}")
+        st.write(f"- Combinations: {len(saved_state['valid_combinations'])}")
+        
+        # Show checkpoint progress
+        for target in config['targets']:
+            completed = load_checkpoint(target)
+            if completed:
+                progress_pct = (len(completed) / len(saved_state['valid_combinations'])) * 100
+                st.write(f"- Progress for '{target}': {len(completed)}/{len(saved_state['valid_combinations'])} ({progress_pct:.1f}%)")
+    
+    with col_resume_actions:
+        if st.button("▶️ Resume Job", type="primary", use_container_width=True):
+            # Set session state to trigger auto-resume
+            st.session_state.trigger_auto_resume = True
+            st.rerun()
+        
+        if st.button("🗑️ Clear & Start Fresh", use_container_width=True):
+            clear_job_state()
+            import shutil
+            shutil.rmtree(CHECKPOINT_DIR, ignore_errors=True)
+            os.makedirs(CHECKPOINT_DIR, exist_ok=True)
+            st.session_state.should_auto_resume = False
+            st.session_state.pop('auto_resume_state', None)
+            st.success("✅ Cleared previous job. Select new filters below.")
+            st.rerun()
+    
+    st.markdown("---")
+
+
 target_options = ["Units", "Euro Value"]
 sel_targets = st.multiselect("Target(s)", options=target_options, default=["Units"])
 
@@ -375,6 +539,7 @@ def get_valid_combinations(df, eff_countries, eff_cats, eff_segments, eff_bchs, 
 
 # File-based cache for valid_combinations
 COMBO_CACHE_FILE = os.path.join(os.path.dirname(__file__), "combo_cache.pkl")
+
 if 'combination_cache' not in st.session_state:
     st.session_state.combination_cache = load_cache(COMBO_CACHE_FILE)
 
@@ -436,6 +601,8 @@ if 'summary_placeholder' not in st.session_state:
 filter_key = f"{eff_countries}_{eff_cats}_{eff_segments}_{eff_bchs}_{eff_products}_{sel_targets}_{use_tsfresh}_{use_tuning}"
 
 
+# ==================== MODEL TASK FUNCTION ====================
+
 # Define run_model_task at module level with robust error handling
 def run_model_task(args):
     try:
@@ -476,9 +643,61 @@ def run_model_task(args):
         return (combo, target, model_name, None)
 
 
-if run or (filter_key in st.session_state.results_cache):
+if run or (filter_key in st.session_state.results_cache) or st.session_state.get('trigger_auto_resume', False):
+    
+    # Check if this is an auto-resume
+    is_auto_resume = st.session_state.get('trigger_auto_resume', False)
+    
+    if is_auto_resume:
+        st.session_state.trigger_auto_resume = False  # Reset trigger
+        
+        # Load saved state
+        saved_state = st.session_state.get('auto_resume_state')
+        if saved_state:
+            filter_config = saved_state['filter_config']
+            valid_combinations = saved_state['valid_combinations']
+            
+            # Restore filter values
+            eff_countries = filter_config.get('countries', eff_countries)
+            eff_cats = filter_config.get('cats', eff_cats)
+            eff_segments = filter_config.get('segments', eff_segments)
+            eff_bchs = filter_config.get('bchs', eff_bchs)
+            eff_products = filter_config.get('products', eff_products)
+            sel_targets = filter_config.get('targets', sel_targets)
+            use_tuning = filter_config.get('use_tuning', use_tuning)
+            
+            st.info(f"🔄 Resuming job with {len(valid_combinations)} combinations...")
+            run = True  # Trigger the run
+        else:
+            st.error("Failed to load saved state")
+            is_auto_resume = False
+            run = False
     
     if run:
+        # Save job state for auto-resume capability
+        if not is_auto_resume:
+            filter_config = {
+                'countries': eff_countries,
+                'cats': eff_cats,
+                'segments': eff_segments,
+                'bchs': eff_bchs,
+                'products': eff_products,
+                'targets': sel_targets,
+                'use_tuning': use_tuning
+            }
+            
+            # Get valid combinations if not already loaded
+            if 'valid_combinations' not in locals() or not is_auto_resume:
+                valid_combinations = list(itertools.product(
+                    eff_countries or [None],
+                    eff_cats or [None],
+                    eff_segments or [None],
+                    eff_bchs or [None],
+                    eff_products or [None]
+                ))
+            
+            save_job_state(filter_config, valid_combinations)
+        
         # Clear old cache and compute new results
         st.session_state.results_cache = {}
 
@@ -503,11 +722,24 @@ if run or (filter_key in st.session_state.results_cache):
             # Define a temporary parquet file for the current target
             temp_parquet_file = f"temp_results_{target}.parquet"
             
-            # Clean up any old temp file before starting
-            if os.path.exists(temp_parquet_file):
-                os.remove(temp_parquet_file)
+            # Load checkpoint to resume from where we left off
+            completed_indices = load_checkpoint(target)
+            
+            # Check if we're resuming
+            if completed_indices:
+                st.info(f"📌 Resuming from checkpoint: {len(completed_indices)}/{len(valid_combinations)} combinations already completed for '{target}'")
+            else:
+                # Clean up old temp file only if starting fresh
+                if os.path.exists(temp_parquet_file):
+                    os.remove(temp_parquet_file)
 
             for i, combo in enumerate(valid_combinations):
+                # Skip already-completed combinations
+                if i in completed_indices:
+                    progress = min((i + 1) / len(valid_combinations), 1.0)
+                    target_progress_bar.progress(progress, text=f"Skipping completed combination {i + 1}/{len(valid_combinations)} for {target}")
+                    continue
+                
                 # For each combination, run all models for the current target
                 combo_tasks = []
                 for model_name in enabled_model_keys:
@@ -577,9 +809,14 @@ if run or (filter_key in st.session_state.results_cache):
                     table = pa.Table.from_pandas(combined_df)
                     pq.write_table(table, temp_parquet_file)
 
+                # Mark this combination as completed and save checkpoint
+                completed_indices.add(i)
+                save_checkpoint(target, completed_indices, len(valid_combinations))
+                
                 # Update progress bar for the current target
                 progress = min((i + 1) / len(valid_combinations), 1.0)
-                target_progress_bar.progress(progress, text=f"Running combinations for {target}... ({i + 1}/{len(valid_combinations)})")
+                progress_pct = (len(completed_indices) / len(valid_combinations)) * 100
+                target_progress_bar.progress(progress, text=f"Running combinations for {target}... ({len(completed_indices)}/{len(valid_combinations)}, {progress_pct:.1f}%)")
 
             # After all combinations for the target are done, read from Parquet and display
             target_export_df = pd.DataFrame()
@@ -601,6 +838,10 @@ if run or (filter_key in st.session_state.results_cache):
             
             all_targets_results.append(target_export_df)
             target_progress_bar.empty() # Clear progress bar for the completed target
+            
+            # Clear checkpoint since target is complete
+            clear_checkpoint(target)
+            st.success(f"✅ All {len(valid_combinations)} combinations completed for '{target}'")
 
         # --- Final Merging and Display ---
         if not all_targets_results:
@@ -629,6 +870,11 @@ if run or (filter_key in st.session_state.results_cache):
                     display_df[col] = display_df[col].round(0).fillna(0).astype(int).apply(format_indian_number)
             st.dataframe(display_df, width='stretch', hide_index=True)
 
+            # Clear job state since all targets completed successfully
+            clear_job_state()
+            st.session_state.should_auto_resume = False
+            st.session_state.pop('auto_resume_state', None)
+            
             # Final results storage
             st.session_state.results_cache[filter_key] = {
                 'export_df': final_export_df.to_dict('records'),

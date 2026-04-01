@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  bayer_app:
+    build: .
+    container_name: bayer_forecasting
+    restart: unless-stopped  # Auto-restart on failure/crash
+    ports:
+      - "8501:8501"
+    volumes:
+      - .:/app
+    environment:
+      - STREAMLIT_SERVER_PORT=8501
+      - STREAMLIT_SERVER_ADDRESS=0.0.0.0
+    command: ["uv", "run", "streamlit", "run", "streamlit_app.py", "--server.port=8501", "--server.address=0.0.0.0", "--server.maxUploadSize=2000"]

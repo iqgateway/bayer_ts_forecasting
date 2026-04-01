@@ -289,3 +289,9 @@ catboost_info/
 torsha_ds.build/
 
 torsha_ds.pyi
+# Checkpoint and job state files
+checkpoints/
+job_state.pkl
+*.parquet
+temp_results_*.parquet
+combo_cache.pkl
