@@ -4,6 +4,11 @@ FROM python:3.9-slim
 # Set the working directory in the container
 WORKDIR /app
 
+# Install system dependencies including tmux for persistent sessions
+RUN apt-get update && apt-get install -y \
+    tmux \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install uv, a fast Python package installer
 RUN pip install uv
 
