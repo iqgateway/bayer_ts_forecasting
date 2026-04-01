@@ -455,50 +455,6 @@ st.write("Selected filters:", {
 })
 
 
-# ==================== AUTO-RESUME NOTIFICATION ====================
-
-# Check if there's a job to auto-resume
-if st.session_state.get('should_auto_resume', False) and st.session_state.get('auto_resume_state'):
-    saved_state = st.session_state.auto_resume_state
-    
-    st.info("🔄 **Detected Incomplete Job from Previous Session**")
-    
-    col_resume_info, col_resume_actions = st.columns([3, 1])
-    
-    with col_resume_info:
-        st.write(f"**Saved Configuration:**")
-        config = saved_state['filter_config']
-        st.write(f"- Countries: {config['countries']}")
-        st.write(f"- Categories: {len(config.get('cats', []))} selected")
-        st.write(f"- Targets: {config['targets']}")
-        st.write(f"- Combinations: {len(saved_state['valid_combinations'])}")
-        
-        # Show checkpoint progress
-        for target in config['targets']:
-            completed = load_checkpoint(target)
-            if completed:
-                progress_pct = (len(completed) / len(saved_state['valid_combinations'])) * 100
-                st.write(f"- Progress for '{target}': {len(completed)}/{len(saved_state['valid_combinations'])} ({progress_pct:.1f}%)")
-    
-    with col_resume_actions:
-        if st.button("▶️ Resume Job", type="primary", use_container_width=True):
-            # Set session state to trigger auto-resume
-            st.session_state.trigger_auto_resume = True
-            st.rerun()
-        
-        if st.button("🗑️ Clear & Start Fresh", use_container_width=True):
-            clear_job_state()
-            import shutil
-            shutil.rmtree(CHECKPOINT_DIR, ignore_errors=True)
-            os.makedirs(CHECKPOINT_DIR, exist_ok=True)
-            st.session_state.should_auto_resume = False
-            st.session_state.pop('auto_resume_state', None)
-            st.success("✅ Cleared previous job. Select new filters below.")
-            st.rerun()
-    
-    st.markdown("---")
-
-
 target_options = ["Units", "Euro Value"]
 sel_targets = st.multiselect("Target(s)", options=target_options, default=["Units"])
 
@@ -588,6 +544,51 @@ use_tsfresh = True  # Always enabled
 use_tuning = st.checkbox("Enable hyperparameter tuning")
 
 run = st.button("Run models")
+
+
+# ==================== AUTO-RESUME NOTIFICATION ====================
+
+# Check if there's a job to auto-resume - show after Run models button
+if st.session_state.get('should_auto_resume', False) and st.session_state.get('auto_resume_state'):
+    saved_state = st.session_state.auto_resume_state
+    
+    st.info("🔄 **Detected Incomplete Job from Previous Session**")
+    
+    col_resume_info, col_resume_actions = st.columns([3, 1])
+    
+    with col_resume_info:
+        st.write(f"**Saved Configuration:**")
+        config = saved_state['filter_config']
+        st.write(f"- Countries: {config['countries']}")
+        st.write(f"- Categories: {len(config.get('cats', []))} selected")
+        st.write(f"- Targets: {config['targets']}")
+        st.write(f"- Combinations: {len(saved_state['valid_combinations'])}")
+        
+        # Show checkpoint progress
+        for target in config['targets']:
+            completed = load_checkpoint(target)
+            if completed:
+                progress_pct = (len(completed) / len(saved_state['valid_combinations'])) * 100
+                st.write(f"- Progress for '{target}': {len(completed)}/{len(saved_state['valid_combinations'])} ({progress_pct:.1f}%)")
+    
+    with col_resume_actions:
+        if st.button("▶️ Resume Job", type="primary", use_container_width=True):
+            # Set session state to trigger auto-resume
+            st.session_state.trigger_auto_resume = True
+            st.rerun()
+        
+        if st.button("🗑️ Clear & Start Fresh", use_container_width=True):
+            clear_job_state()
+            import shutil
+            shutil.rmtree(CHECKPOINT_DIR, ignore_errors=True)
+            os.makedirs(CHECKPOINT_DIR, exist_ok=True)
+            st.session_state.should_auto_resume = False
+            st.session_state.pop('auto_resume_state', None)
+            st.success("✅ Cleared previous job. Select new filters below.")
+            st.rerun()
+    
+    st.markdown("---")
+
 
 # Initialize session state for storing results
 if 'results_cache' not in st.session_state:
