@@ -736,32 +736,31 @@ if run or (filter_key in st.session_state.results_cache) or st.session_state.get
 
         # --- Process target by target ---
         for target in total_targets:
-            # Skip targets that have already been completed (no checkpoint exists)
+            # Skip targets that have already been completed (no checkpoint exists but temp file does)
             if is_auto_resume:
                 checkpoint_exists = os.path.exists(get_checkpoint_file(target))
                 temp_parquet_file = f"temp_results_{target}.parquet"
+                temp_file_exists = os.path.exists(temp_parquet_file)
                 
-                if not checkpoint_exists:
-                    # Target already completed - load existing results if available
+                # Only skip if no checkpoint AND temp file exists (meaning it completed)
+                if not checkpoint_exists and temp_file_exists:
+                    # Target already completed - load existing results and display
                     completed_targets.add(target)  # Track that this target is done
-                    if os.path.exists(temp_parquet_file):
-                        st.markdown(f"### Processing Target: {target}")
-                        st.success(f"✅ Target '{target}' already completed - loading existing results")
-                        target_export_df = pq.read_table(temp_parquet_file).to_pandas()
-                        
-                        # Display the summary for the completed target
-                        display_df = target_export_df.copy()
-                        display_df["Month"] = pd.to_datetime(display_df["Month"]).dt.strftime("%Y-%m-%d")
-                        forecast_col = f"Forecast_{target}"
-                        if forecast_col in display_df.columns:
-                            display_df[forecast_col] = display_df[forecast_col].round(0).fillna(0).astype(int).apply(format_indian_number)
-                        
-                        st.subheader(f"Summary of filters with forecasts ready for export - {target}")
-                        st.dataframe(display_df, width='stretch', hide_index=True)
-                        
-                        all_targets_results.append(target_export_df)
-                    else:
-                        st.success(f"✅ Target '{target}' already completed in previous run - skipping")
+                    st.markdown(f"### Processing Target: {target}")
+                    st.success(f"✅ Target '{target}' already completed - loading existing results")
+                    target_export_df = pq.read_table(temp_parquet_file).to_pandas()
+                    
+                    # Display the summary for the completed target
+                    display_df = target_export_df.copy()
+                    display_df["Month"] = pd.to_datetime(display_df["Month"]).dt.strftime("%Y-%m-%d")
+                    forecast_col = f"Forecast_{target}"
+                    if forecast_col in display_df.columns:
+                        display_df[forecast_col] = display_df[forecast_col].round(0).fillna(0).astype(int).apply(format_indian_number)
+                    
+                    st.subheader(f"Summary of filters with forecasts ready for export - {target}")
+                    st.dataframe(display_df, width='stretch', hide_index=True)
+                    
+                    all_targets_results.append(target_export_df)
                     continue
             
             st.markdown(f"### Processing Target: {target}")
