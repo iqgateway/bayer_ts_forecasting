@@ -436,38 +436,44 @@ if 'summary_placeholder' not in st.session_state:
 filter_key = f"{eff_countries}_{eff_cats}_{eff_segments}_{eff_bchs}_{eff_products}_{sel_targets}_{use_tsfresh}_{use_tuning}"
 
 
-# Define run_model_task at module level for pickling by ProcessPoolExecutor
+# Define run_model_task at module level with robust error handling
 def run_model_task(args):
-    combo, target, model_name, use_tuning = args
-    country, cat, segment, bch, product = combo
-    
-    enabled_model_keys = [k for k, v in {
-        "skforecast_xgb": True,
-        "sktime_es": True,
-        "darts_es": True,
-        "pydlm": True,
-        "tsfresh_xgb": True
-    }.items() if v]
-    
-    df_filt = filter_df(
-        df,
-        [country] if country else [], [cat] if cat else [],
-        [bch] if bch else [], [segment] if segment else [],
-        [product] if product else [],
-    )
-    if df_filt.empty: 
+    try:
+        combo, target, model_name, use_tuning = args
+        country, cat, segment, bch, product = combo
+        
+        enabled_model_keys = [k for k, v in {
+            "skforecast_xgb": True,
+            "sktime_es": True,
+            "darts_es": True,
+            "pydlm": True,
+            "tsfresh_xgb": True
+        }.items() if v]
+        
+        df_filt = filter_df(
+            df,
+            [country] if country else [], [cat] if cat else [],
+            [bch] if bch else [], [segment] if segment else [],
+            [product] if product else [],
+        )
+        if df_filt.empty: 
+            return (combo, target, model_name, None)
+        
+        series = build_series(df_filt, target_col=target)
+        single_enable = {k: (k == model_name) for k in enabled_model_keys}
+        results_df, best_model, test_compare, all_forecasts, model_name_mapping = evaluate_models(
+            series, single_enable, target_name=target, tune=use_tuning
+        )
+        return (combo, target, model_name, {
+            'results_df': results_df, 'best_model': best_model,
+            'test_compare': test_compare, 'all_forecasts': all_forecasts,
+            'model_name_mapping': model_name_mapping
+        })
+    except MemoryError as e:
         return (combo, target, model_name, None)
-    
-    series = build_series(df_filt, target_col=target)
-    single_enable = {k: (k == model_name) for k in enabled_model_keys}
-    results_df, best_model, test_compare, all_forecasts, model_name_mapping = evaluate_models(
-        series, single_enable, target_name=target, tune=use_tuning
-    )
-    return (combo, target, model_name, {
-        'results_df': results_df, 'best_model': best_model,
-        'test_compare': test_compare, 'all_forecasts': all_forecasts,
-        'model_name_mapping': model_name_mapping
-    })
+    except Exception as e:
+        # Return None on any error to prevent worker crash
+        return (combo, target, model_name, None)
 
 
 if run or (filter_key in st.session_state.results_cache):
@@ -509,11 +515,13 @@ if run or (filter_key in st.session_state.results_cache):
 
                 combo_results = {}
 
-                with concurrent.futures.ProcessPoolExecutor(max_workers=8) as executor:
+                # Use ThreadPoolExecutor instead of ProcessPoolExecutor to avoid memory issues
+                # ThreadPoolExecutor shares memory, avoiding DataFrame pickling overhead
+                with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
                     futures = [executor.submit(run_model_task, task) for task in combo_tasks]
-                    for future in concurrent.futures.as_completed(futures):
+                    for future in concurrent.futures.as_completed(futures, timeout=300):  # 5 min timeout per task
                         try:
-                            f_combo, f_target, f_model_name, f_result = future.result()
+                            f_combo, f_target, f_model_name, f_result = future.result(timeout=10)  # 10 sec to get result
                             if f_result:
                                 combo_key = (f_combo[0], f_combo[1], f_combo[2], f_combo[3], f_combo[4], f_target)
                                 if combo_key not in combo_results:
@@ -522,8 +530,14 @@ if run or (filter_key in st.session_state.results_cache):
                                     combo_results[combo_key]['all_forecasts'][model] = forecast
                                 if f_result.get('best_model'):
                                     combo_results[combo_key]['best_model'] = f_result['best_model']
+                        except concurrent.futures.TimeoutError:
+                            st.warning(f"Model task timed out for combination {combo}")
+                            continue
+                        except MemoryError as e:
+                            st.error(f"Out of memory for combination {combo}: {e}")
+                            continue
                         except Exception as e:
-                            print(f"A model run for combination {combo} failed: {e}")
+                            st.warning(f"Model run failed for combination {combo}, model {f_model_name if 'f_model_name' in locals() else 'unknown'}: {str(e)[:100]}")
                             continue
                 
                 # Process results for the current combination and append to Parquet
