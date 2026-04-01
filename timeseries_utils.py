@@ -191,7 +191,7 @@ def run_skforecast_xgb(y_train, y_test):
     from xgboost import XGBRegressor
     forecaster = ForecasterAutoreg(
         regressor=XGBRegressor(
-            n_estimators=300, max_depth=6, learning_rate=0.05, subsample=0.8, colsample_bytree=0.9, random_state=42, verbose=0
+            n_estimators=300, max_depth=6, learning_rate=0.05, subsample=0.8, colsample_bytree=0.9, random_state=42, verbosity=0
         ),
         lags=12
     )
@@ -226,7 +226,7 @@ def run_skforecast_xgb_tuned(y_train, y_test):
                 colsample_bytree=0.9,
                 random_state=42,
                 n_jobs=0,
-                verbose=0
+                verbosity=0
             ),
             lags=g["lags"]
         )
@@ -513,7 +513,7 @@ def run_tsfresh_xgb(
         "colsample_bytree": 0.9,
         "random_state": 42,
         "n_jobs": 0,
-        "verbose": 0
+        "verbosity": 0
     }
 
     ##############################################
