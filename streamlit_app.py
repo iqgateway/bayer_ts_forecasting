@@ -676,6 +676,12 @@ if run or (filter_key in st.session_state.results_cache) or st.session_state.get
     if run:
         # Save job state for auto-resume capability
         if not is_auto_resume:
+            # Use the valid_combinations that were already computed by "Run combinations" button
+            # They are available in the outer scope from the combinations finding step
+            if valid_combinations is None:
+                st.error("❌ Please click 'Run combinations' first to find valid combinations!")
+                st.stop()
+            
             filter_config = {
                 'countries': eff_countries,
                 'cats': eff_cats,
@@ -685,16 +691,6 @@ if run or (filter_key in st.session_state.results_cache) or st.session_state.get
                 'targets': sel_targets,
                 'use_tuning': use_tuning
             }
-            
-            # Get valid combinations if not already loaded
-            if 'valid_combinations' not in locals() or not is_auto_resume:
-                valid_combinations = list(itertools.product(
-                    eff_countries or [None],
-                    eff_cats or [None],
-                    eff_segments or [None],
-                    eff_bchs or [None],
-                    eff_products or [None]
-                ))
             
             save_job_state(filter_config, valid_combinations)
         
