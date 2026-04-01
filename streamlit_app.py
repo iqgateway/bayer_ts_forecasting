@@ -564,12 +564,29 @@ if st.session_state.get('should_auto_resume', False) and st.session_state.get('a
         st.write(f"- Targets: {config['targets']}")
         st.write(f"- Combinations: {len(saved_state['valid_combinations'])}")
         
-        # Show checkpoint progress
+        # Show checkpoint progress - differentiate complete vs incomplete targets
+        st.write("**Target Status:**")
+        has_incomplete = False
         for target in config['targets']:
             completed = load_checkpoint(target)
             if completed:
                 progress_pct = (len(completed) / len(saved_state['valid_combinations'])) * 100
-                st.write(f"- Progress for '{target}': {len(completed)}/{len(saved_state['valid_combinations'])} ({progress_pct:.1f}%)")
+                if len(completed) == len(saved_state['valid_combinations']):
+                    st.write(f"- ✅ '{target}': Complete")
+                else:
+                    st.write(f"- ⏸️ '{target}': {len(completed)}/{len(saved_state['valid_combinations'])} ({progress_pct:.1f}%)")
+                    has_incomplete = True
+            else:
+                # No checkpoint means either complete or not started - check temp file
+                temp_file = f"temp_results_{target}.parquet"
+                if os.path.exists(temp_file):
+                    st.write(f"- ✅ '{target}': Complete")
+                else:
+                    st.write(f"- 🆕 '{target}': Not started")
+                    has_incomplete = True
+        
+        if not has_incomplete:
+            st.warning("⚠️ All targets appear complete. You may want to 'Clear & Start Fresh' instead.")
     
     with col_resume_actions:
         if st.button("▶️ Resume Job", type="primary", use_container_width=True):
@@ -712,6 +729,21 @@ if run or (filter_key in st.session_state.results_cache) or st.session_state.get
 
         # --- Process target by target ---
         for target in (sel_targets or ["Units"]):
+            # Skip targets that have already been completed (no checkpoint exists)
+            if is_auto_resume:
+                checkpoint_exists = os.path.exists(get_checkpoint_file(target))
+                temp_parquet_file = f"temp_results_{target}.parquet"
+                
+                if not checkpoint_exists:
+                    # Target already completed - load existing results if available
+                    if os.path.exists(temp_parquet_file):
+                        st.success(f"✅ Target '{target}' already completed - loading existing results")
+                        target_export_df = pq.read_table(temp_parquet_file).to_pandas()
+                        all_targets_results.append(target_export_df)
+                    else:
+                        st.success(f"✅ Target '{target}' already completed in previous run - skipping")
+                    continue
+            
             st.markdown(f"### Processing Target: {target}")
             target_progress_bar = st.progress(0, text=f"Running combinations for {target}...")
             target_summary_placeholder = st.empty()
@@ -839,6 +871,12 @@ if run or (filter_key in st.session_state.results_cache) or st.session_state.get
             # Clear checkpoint since target is complete
             clear_checkpoint(target)
             st.success(f"✅ All {len(valid_combinations)} combinations completed for '{target}'")
+            
+            # Check if all targets are complete (no more checkpoints)
+            if not has_active_checkpoint():
+                # All targets done - clear job state
+                clear_job_state()
+                st.success("🎉 All targets completed! Job state cleared.")
 
         # --- Final Merging and Display ---
         if not all_targets_results:
