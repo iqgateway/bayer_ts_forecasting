@@ -726,9 +726,11 @@ if run or (filter_key in st.session_state.results_cache) or st.session_state.get
         runtime_start = datetime.datetime.now()
         
         all_targets_results = []
+        completed_targets = set()  # Track which targets have completed
+        total_targets = sel_targets or ["Units"]
 
         # --- Process target by target ---
-        for target in (sel_targets or ["Units"]):
+        for target in total_targets:
             # Skip targets that have already been completed (no checkpoint exists)
             if is_auto_resume:
                 checkpoint_exists = os.path.exists(get_checkpoint_file(target))
@@ -736,6 +738,7 @@ if run or (filter_key in st.session_state.results_cache) or st.session_state.get
                 
                 if not checkpoint_exists:
                     # Target already completed - load existing results if available
+                    completed_targets.add(target)  # Track that this target is done
                     if os.path.exists(temp_parquet_file):
                         st.success(f"✅ Target '{target}' already completed - loading existing results")
                         target_export_df = pq.read_table(temp_parquet_file).to_pandas()
@@ -870,10 +873,11 @@ if run or (filter_key in st.session_state.results_cache) or st.session_state.get
             
             # Clear checkpoint since target is complete
             clear_checkpoint(target)
+            completed_targets.add(target)  # Track completion
             st.success(f"✅ All {len(valid_combinations)} combinations completed for '{target}'")
             
-            # Check if all targets are complete (no more checkpoints)
-            if not has_active_checkpoint():
+            # Check if all targets from the original configuration are complete
+            if len(completed_targets) == len(total_targets):
                 # All targets done - clear job state
                 clear_job_state()
                 st.success("🎉 All targets completed! Job state cleared.")
