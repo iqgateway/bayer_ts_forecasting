@@ -26,9 +26,10 @@ from file_cache_utils import load_cache, save_cache, get_cached_valid_combinatio
 # from statsmodels.graphics.tsaplots import plot_acf
 
 DATA_PATHS = [
-    os.path.join(os.path.dirname(__file__), "bayer_final_1.csv"),
-    os.path.join(os.path.dirname(__file__), "bayer_final_2.csv"),
-    os.path.join(os.path.dirname(__file__), "bayer_final_3.csv"),
+    # os.path.join(os.path.dirname(__file__), "bayer_final_1.csv"),
+    # os.path.join(os.path.dirname(__file__), "bayer_final_2.csv"),
+    # os.path.join(os.path.dirname(__file__), "bayer_final_3.csv"),
+    os.path.join(os.path.dirname(__file__), "bayer_final.csv"),
 ]
 LOGO_PATH = os.path.join(os.path.dirname(__file__), "logo.svg")
 
