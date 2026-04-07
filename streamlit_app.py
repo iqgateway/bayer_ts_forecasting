@@ -569,7 +569,7 @@ if valid_combinations is not None:
 use_tsfresh = True  # Always enabled
 use_tuning = st.checkbox("Enable hyperparameter tuning")
 
-run = st.button("Clear cache and run model")
+run = st.button("Run model")
 
 
 # ==================== AUTO-RESUME NOTIFICATION ====================
