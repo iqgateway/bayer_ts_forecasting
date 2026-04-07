@@ -334,21 +334,25 @@ col1, col2, col3, col4, col5 = st.columns(5)
 
 # 1) Countries (single selection)
 with col1:
-    country_options = countries
+    country_options = ["-- Select a Country --"] + countries
+    if 'sel_country' not in st.session_state:
+        st.session_state.sel_country = "-- Select a Country --"
     sel_country = st.selectbox(
         "Country",
         options=country_options,
         key="sel_country"
     )
-eff_countries = [sel_country]
+eff_countries = [sel_country] if sel_country != "-- Select a Country --" else []
 
 
 
 # 2) Bayer (BCH) selection (multi-select with Select All)
 with col4:
     if has_bch:
+        if 'sel_bchs' not in st.session_state:
+            st.session_state.sel_bchs = []
         bch_options = ["Select All"] + bchs
-        sel_bchs = st.multiselect("Bayer", options=bch_options, default=[], key="sel_bchs")
+        sel_bchs = st.multiselect("Bayer", options=bch_options, key="sel_bchs")
         if "Select All" in sel_bchs:
             sel_bchs = bchs
     else:
@@ -359,7 +363,9 @@ eff_bchs = sel_bchs
 
 # 3) Global CAT depends on Countries + Bayer
 with col2:
-    df_for_cats = df[df["Country"].isin(eff_countries)]
+    if 'sel_cats' not in st.session_state:
+        st.session_state.sel_cats = []
+    df_for_cats = df[df["Country"].isin(eff_countries)] if eff_countries else df
     if has_bch and len(eff_bchs) > 0:
         df_for_cats = df_for_cats[df_for_cats["BCH"].isin(eff_bchs)]
     cats_filtered = sorted(
@@ -369,7 +375,6 @@ with col2:
     sel_cats = st.multiselect(
         "Global CAT",
         options=cat_options,
-        default=[],
         key="sel_cats"
     )
     if "Select All" in sel_cats:
@@ -381,7 +386,9 @@ eff_cats = sel_cats
 # 4) Global Segment depends on Countries + Bayer + Global CAT
 with col3:
     if has_seg:
-        df_for_segments = df[df["Country"].isin(eff_countries)]
+        if 'sel_segments' not in st.session_state:
+            st.session_state.sel_segments = []
+        df_for_segments = df[df["Country"].isin(eff_countries)] if eff_countries else df
         if has_bch and len(eff_bchs) > 0:
             df_for_segments = df_for_segments[df_for_segments["BCH"].isin(eff_bchs)]
         if len(eff_cats) > 0:
@@ -391,7 +398,6 @@ with col3:
         sel_segments = st.multiselect(
             "Global Segment",
             options=seg_options,
-            default=[],
             key="sel_segments"
         )
         if "Select All" in sel_segments:
@@ -414,7 +420,9 @@ if has_prod:
 # 5) Product (depends on all above)
 with col5:
     if show_product_filter:
-        df_for_prods = df[df["Country"].isin(eff_countries)]
+        if 'sel_products' not in st.session_state:
+            st.session_state.sel_products = []
+        df_for_prods = df[df["Country"].isin(eff_countries)] if eff_countries else df
         if len(eff_cats) > 0:
             df_for_prods = df_for_prods[df_for_prods["Global_CAT"].isin(eff_cats)]
         if has_seg and len(eff_segments) > 0:
@@ -426,7 +434,6 @@ with col5:
         sel_products = st.multiselect(
             "Product",
             options=prod_options,
-            default=[],
             key="sel_products"
         )
         if "Select All" in sel_products:
@@ -436,7 +443,7 @@ with col5:
         # If Bayer is Other, auto-select all products for the filtered data, but do not show in UI
         if has_prod and has_bch and all(str(x).strip().lower() not in ["yes", "bch"] for x in sel_bchs):
             # Filter products based on all current filters (Country, Global CAT, Global Segment, Bayer)
-            df_for_prods = df[df["Country"].isin(eff_countries)]
+            df_for_prods = df[df["Country"].isin(eff_countries)] if eff_countries else df
             if len(eff_cats) > 0:
                 df_for_prods = df_for_prods[df_for_prods["Global_CAT"].isin(eff_cats)]
             if has_seg and len(eff_segments) > 0:
@@ -569,7 +576,18 @@ if valid_combinations is not None:
 use_tsfresh = True  # Always enabled
 use_tuning = st.checkbox("Enable hyperparameter tuning")
 
+# Create buttons stacked vertically
+clear = st.button("Clear Selection")
 run = st.button("Run model")
+
+# Handle clear selection
+if clear:
+    # Delete all filter session state keys to force complete refresh
+    keys_to_delete = ['sel_country', 'sel_bchs', 'sel_cats', 'sel_segments', 'sel_products']
+    for key in keys_to_delete:
+        if key in st.session_state:
+            del st.session_state[key]
+    st.rerun()
 
 
 # ==================== AUTO-RESUME NOTIFICATION ====================
