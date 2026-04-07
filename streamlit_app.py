@@ -569,7 +569,7 @@ if valid_combinations is not None:
 use_tsfresh = True  # Always enabled
 use_tuning = st.checkbox("Enable hyperparameter tuning")
 
-run = st.button("Run models")
+run = st.button("Clear cache and run model")
 
 
 # ==================== AUTO-RESUME NOTIFICATION ====================
@@ -723,6 +723,28 @@ if run or (filter_key in st.session_state.results_cache) or st.session_state.get
             if valid_combinations is None:
                 st.error("❌ Please click 'Run combinations' first to find valid combinations!")
                 st.stop()
+            
+            # Clear all previous cache before starting a new run (safety measure)
+            st.info("🗑️ Clearing previous cache...")
+            
+            # Clear job state
+            clear_job_state()
+            
+            # Clear checkpoints
+            import shutil
+            shutil.rmtree(CHECKPOINT_DIR, ignore_errors=True)
+            os.makedirs(CHECKPOINT_DIR, exist_ok=True)
+            
+            # Clear temp parquet files
+            import glob
+            for temp_file in glob.glob("temp_results_*.parquet"):
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
+            
+            # Clear combination cache
+            st.session_state.combination_cache = {}
+            if os.path.exists(COMBO_CACHE_FILE):
+                os.remove(COMBO_CACHE_FILE)
             
             filter_config = {
                 'countries': eff_countries,
