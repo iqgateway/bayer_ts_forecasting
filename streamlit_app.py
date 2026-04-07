@@ -488,10 +488,33 @@ def get_valid_combinations(df, eff_countries, eff_cats, eff_segments, eff_bchs, 
         d = d[d["BCH"].isin(eff_bchs)]
     if eff_products:
         d = d[d["Product"].isin(eff_products)]
-    # Get unique combinations of the relevant columns
+    
+    # Get unique combinations, handling BCH vs Other differently
     combo_cols = ["Country", "Global_CAT", "Global_Segment", "BCH", "Product"]
-    valid_combos = d[combo_cols].drop_duplicates().values.tolist()
-    return [tuple(row) for row in valid_combos]
+    valid_combos_raw = d[combo_cols].drop_duplicates().values.tolist()
+    
+    # Process combinations: aggregate products for non-BCH entries
+    valid_combos = []
+    seen_non_bch = set()  # Track non-BCH combinations (without product)
+    
+    for row in valid_combos_raw:
+        country, cat, segment, bch, product = row
+        
+        # Check if BCH is "Yes" or "BCH" (case-insensitive)
+        is_bch = str(bch).strip().lower() in ["yes", "bch"]
+        
+        if is_bch:
+            # For BCH, keep individual products
+            valid_combos.append(tuple(row))
+        else:
+            # For non-BCH (Other), aggregate all products into one combination
+            # Use None as product to indicate aggregation
+            combo_key = (country, cat, segment, bch)
+            if combo_key not in seen_non_bch:
+                seen_non_bch.add(combo_key)
+                valid_combos.append((country, cat, segment, bch, None))
+    
+    return valid_combos
 
 
 
@@ -632,11 +655,14 @@ def run_model_task(args):
             "tsfresh_xgb": True
         }.items() if v]
         
+        # Handle product filtering: if product is None, don't filter by product (aggregate all products)
         df_filt = filter_df(
             df,
-            [country] if country else [], [cat] if cat else [],
-            [bch] if bch else [], [segment] if segment else [],
-            [product] if product else [],
+            [country] if country else [], 
+            [cat] if cat else [],
+            [bch] if bch else [], 
+            [segment] if segment else [],
+            [product] if product else [],  # Empty list means don't filter by product
         )
         if df_filt.empty: 
             return (combo, target, model_name, None)
@@ -830,8 +856,12 @@ if run or (filter_key in st.session_state.results_cache) or st.session_state.get
                     col_name = f"Forecast_{res_target}"
                     for _, row in df_out.iterrows():
                         combo_export_rows.append({
-                            "Country": country, "Global_CAT": cat, "Global_Segment": segment,
-                            "BCH": bch, "Product": product, "Month": row["Month"],
+                            "Country": country, 
+                            "Global_CAT": cat, 
+                            "Global_Segment": segment,
+                            "BCH": bch, 
+                            "Product": product if product else "All Products",  # Display "All Products" when aggregated
+                            "Month": row["Month"],
                             col_name: row[col_name],
                         })
                 
