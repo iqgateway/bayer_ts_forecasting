@@ -302,6 +302,8 @@ if 'auto_resume_checked' not in st.session_state:
         if saved_state:
             st.session_state.auto_resume_state = saved_state
             st.session_state.should_auto_resume = True
+            # Automatically trigger resume instead of waiting for button click
+            st.session_state.trigger_auto_resume = True
         else:
             # Checkpoint exists but no job state - clear orphaned checkpoints
             import shutil
@@ -548,25 +550,25 @@ run = st.button("Run models")
 
 # ==================== AUTO-RESUME NOTIFICATION ====================
 
-# Check if there's a job to auto-resume - show after Run models button
+# Check if there's a job to auto-resume - show informational message
 if st.session_state.get('should_auto_resume', False) and st.session_state.get('auto_resume_state'):
     saved_state = st.session_state.auto_resume_state
     
-    st.info("🔄 **Detected Incomplete Job from Previous Session**")
+    st.info("🔄 **Automatically Resuming Incomplete Job from Previous Session**")
     
-    col_resume_info, col_resume_actions = st.columns([3, 1])
+    config = saved_state['filter_config']
     
-    with col_resume_info:
-        st.write(f"**Saved Configuration:**")
-        config = saved_state['filter_config']
+    col_info, col_actions = st.columns([3, 1])
+    
+    with col_info:
+        st.write(f"**Configuration:**")
         st.write(f"- Countries: {config['countries']}")
         st.write(f"- Categories: {len(config.get('cats', []))} selected")
         st.write(f"- Targets: {config['targets']}")
         st.write(f"- Combinations: {len(saved_state['valid_combinations'])}")
         
-        # Show checkpoint progress - differentiate complete vs incomplete targets
+        # Show checkpoint progress
         st.write("**Target Status:**")
-        has_incomplete = False
         for target in config['targets']:
             completed = load_checkpoint(target)
             if completed:
@@ -575,26 +577,15 @@ if st.session_state.get('should_auto_resume', False) and st.session_state.get('a
                     st.write(f"- ✅ '{target}': Complete")
                 else:
                     st.write(f"- ⏸️ '{target}': {len(completed)}/{len(saved_state['valid_combinations'])} ({progress_pct:.1f}%)")
-                    has_incomplete = True
             else:
-                # No checkpoint means either complete or not started - check temp file
                 temp_file = f"temp_results_{target}.parquet"
                 if os.path.exists(temp_file):
                     st.write(f"- ✅ '{target}': Complete")
                 else:
                     st.write(f"- 🆕 '{target}': Not started")
-                    has_incomplete = True
-        
-        if not has_incomplete:
-            st.warning("⚠️ All targets appear complete. You may want to 'Clear & Start Fresh' instead.")
     
-    with col_resume_actions:
-        if st.button("▶️ Resume Job", type="primary", use_container_width=True):
-            # Set session state to trigger auto-resume
-            st.session_state.trigger_auto_resume = True
-            st.rerun()
-        
-        if st.button("🗑️ Clear & Start Fresh", use_container_width=True):
+    with col_actions:
+        if st.button("🗑️ Cancel & Start Fresh", use_container_width=True):
             clear_job_state()
             import shutil
             shutil.rmtree(CHECKPOINT_DIR, ignore_errors=True)
@@ -605,6 +596,7 @@ if st.session_state.get('should_auto_resume', False) and st.session_state.get('a
                 if os.path.exists(temp_file):
                     os.remove(temp_file)
             st.session_state.should_auto_resume = False
+            st.session_state.trigger_auto_resume = False
             st.session_state.pop('auto_resume_state', None)
             st.success("✅ Cleared previous job. Select new filters below.")
             st.rerun()
