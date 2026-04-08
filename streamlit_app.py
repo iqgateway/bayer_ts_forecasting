@@ -718,7 +718,7 @@ if run or (filter_key in st.session_state.results_cache) or st.session_state.get
             sel_targets = filter_config.get('targets', sel_targets)
             use_tuning = filter_config.get('use_tuning', use_tuning)
             
-            st.info(f"🔄 Resuming job with {len(valid_combinations)} combinations...")
+            # st.info(f"🔄 Resuming job with {len(valid_combinations)} combinations...")
             run = True  # Trigger the run
         else:
             st.error("Failed to load saved state")
