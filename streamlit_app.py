@@ -970,7 +970,7 @@ if run or (filter_key in st.session_state.results_cache) or st.session_state.get
                     temp_file = f"temp_results_{t}.parquet"
                     if os.path.exists(temp_file):
                         os.remove(temp_file)
-                st.success("🎉 All targets completed! Job state cleared.")
+                # st.success("🎉 All targets completed! Job state cleared.")
 
         # --- Final Merging and Display ---
         if not all_targets_results:
@@ -985,9 +985,9 @@ if run or (filter_key in st.session_state.results_cache) or st.session_state.get
             runtime_end = datetime.datetime.now()
             total_time = runtime_end - runtime_start
             
-            st.markdown(f"**Runtime start:** {runtime_start.strftime('%Y-%m-%d %H:%M:%S')}")
-            st.markdown(f"**Runtime end:** {runtime_end.strftime('%Y-%m-%d %H:%M:%S')}")
-            st.markdown(f"**Total time taken:** {str(total_time).split('.')[0]}")
+            # st.markdown(f"**Runtime start:** {runtime_start.strftime('%Y-%m-%d %H:%M:%S')}")
+            # st.markdown(f"**Runtime end:** {runtime_end.strftime('%Y-%m-%d %H:%M:%S')}")
+            # st.markdown(f"**Total time taken:** {str(total_time).split('.')[0]}")
 
             # Display final combined table at the bottom
             st.subheader("Final Combined Forecast Summary")
