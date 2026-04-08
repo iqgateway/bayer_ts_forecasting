@@ -12,6 +12,7 @@ import matplotlib as mpl
 import sqlite3
 import pyarrow as pa
 import pyarrow.parquet as pq
+import shutil
 
 from timeseries_utils import (
     load_and_prepare, filter_df, build_series, evaluate_models
@@ -307,7 +308,6 @@ if 'auto_resume_checked' not in st.session_state:
             st.session_state.trigger_auto_resume = True
         else:
             # Checkpoint exists but no job state - clear orphaned checkpoints
-            import shutil
             shutil.rmtree(CHECKPOINT_DIR, ignore_errors=True)
             os.makedirs(CHECKPOINT_DIR, exist_ok=True)
     else:
@@ -345,29 +345,11 @@ with col1:
 eff_countries = [sel_country] if sel_country != "-- Select a Country --" else []
 
 
-
-# 2) Bayer (BCH) selection (multi-select with Select All)
-with col4:
-    if has_bch:
-        if 'sel_bchs' not in st.session_state:
-            st.session_state.sel_bchs = []
-        bch_options = ["Select All"] + bchs
-        sel_bchs = st.multiselect("Bayer", options=bch_options, key="sel_bchs")
-        if "Select All" in sel_bchs:
-            sel_bchs = bchs
-    else:
-        sel_bchs = []
-eff_bchs = sel_bchs
-
-
-
-# 3) Global CAT depends on Countries + Bayer
+# 2) Global CAT depends on Countries
 with col2:
     if 'sel_cats' not in st.session_state:
         st.session_state.sel_cats = []
     df_for_cats = df[df["Country"].isin(eff_countries)] if eff_countries else df
-    if has_bch and len(eff_bchs) > 0:
-        df_for_cats = df_for_cats[df_for_cats["BCH"].isin(eff_bchs)]
     cats_filtered = sorted(
         df_for_cats["Global_CAT"].dropna().unique().tolist()
     )
@@ -382,15 +364,12 @@ with col2:
 eff_cats = sel_cats
 
 
-
-# 4) Global Segment depends on Countries + Bayer + Global CAT
+# 3) Global Segment depends on Countries + Global CAT
 with col3:
     if has_seg:
         if 'sel_segments' not in st.session_state:
             st.session_state.sel_segments = []
         df_for_segments = df[df["Country"].isin(eff_countries)] if eff_countries else df
-        if has_bch and len(eff_bchs) > 0:
-            df_for_segments = df_for_segments[df_for_segments["BCH"].isin(eff_bchs)]
         if len(eff_cats) > 0:
             df_for_segments = df_for_segments[df_for_segments["Global_CAT"].isin(eff_cats)]
         segments_filtered = sorted(df_for_segments["Global_Segment"].dropna().unique().tolist())
@@ -406,6 +385,32 @@ with col3:
         sel_segments = []
         segments_filtered = []
 eff_segments = sel_segments
+
+
+# 4) Bayer (BCH) selection (multi-select with Select All) - depends on previous filters
+with col4:
+    if has_bch:
+        if 'sel_bchs' not in st.session_state:
+            st.session_state.sel_bchs = []
+        
+        df_for_bchs = df.copy()
+        if eff_countries:
+            df_for_bchs = df_for_bchs[df_for_bchs["Country"].isin(eff_countries)]
+        if eff_cats:
+            df_for_bchs = df_for_bchs[df_for_bchs["Global_CAT"].isin(eff_cats)]
+        if has_seg and eff_segments:
+            df_for_bchs = df_for_bchs[df_for_bchs["Global_Segment"].isin(eff_segments)]
+
+        bchs_filtered = sorted(df_for_bchs["BCH"].dropna().unique().tolist(), key=lambda x: 0 if str(x).strip().lower() == "yes" else 1)
+        bch_options = ["Select All"] + bchs_filtered
+        
+        sel_bchs = st.multiselect("Bayer", options=bch_options, key="sel_bchs")
+        
+        if "Select All" in sel_bchs:
+            sel_bchs = bchs_filtered
+    else:
+        sel_bchs = []
+eff_bchs = sel_bchs
 
 
 # Determine if the Product filter should be shown
@@ -582,8 +587,17 @@ with button_col2:
 
 # Handle clear selection
 if clear:
+    # Clear job state and checkpoints
+    clear_job_state()
+    if os.path.exists(CHECKPOINT_DIR):
+        shutil.rmtree(CHECKPOINT_DIR, ignore_errors=True)
+        os.makedirs(CHECKPOINT_DIR, exist_ok=True)
+
     # Delete all filter session state keys to force complete refresh
-    keys_to_delete = ['sel_country', 'sel_bchs', 'sel_cats', 'sel_segments', 'sel_products']
+    keys_to_delete = [
+        'sel_country', 'sel_bchs', 'sel_cats', 'sel_segments', 'sel_products',
+        'results_cache', 'auto_resume_state', 'should_auto_resume', 'trigger_auto_resume'
+    ]
     for key in keys_to_delete:
         if key in st.session_state:
             del st.session_state[key]
