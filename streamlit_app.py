@@ -548,15 +548,12 @@ if run_combinations or combo_cache_key in st.session_state.combination_cache:
         valid_combinations = st.session_state.combination_cache[combo_cache_key]
     else:
         combo_start_time = datetime.datetime.now()
-        st.write(f"Combinations start time: {combo_start_time.strftime('%Y-%m-%d %H:%M:%S')}")
         progress_bar_combo = st.progress(0, text="Finding valid combinations...")
         valid_combinations = get_valid_combinations(df, eff_countries, eff_cats, eff_segments, eff_bchs, eff_products)
         progress_bar_combo.progress(100, text="Valid combinations found.")
         progress_bar_combo.empty()
         combo_end_time = datetime.datetime.now()
-        st.write(f"Combinations end time: {combo_end_time.strftime('%Y-%m-%d %H:%M:%S')}")
         combo_total_time = (combo_end_time - combo_start_time).total_seconds()
-        st.write(f"Total time taken for combinations: {combo_total_time:.2f} seconds")
         st.session_state.combination_cache[combo_cache_key] = valid_combinations
         save_cache(COMBO_CACHE_FILE, st.session_state.combination_cache)
 
@@ -599,29 +596,21 @@ if clear:
 if st.session_state.get('should_auto_resume', False) and st.session_state.get('auto_resume_state'):
     saved_state = st.session_state.auto_resume_state
     
-    st.info("🔄 **Automatically Resuming Incomplete Job from Previous Session**")
+    # st.info("🔄 **Automatically Resuming Incomplete Job from Previous Session**")
     
     config = saved_state['filter_config']
     
     col_info, col_actions = st.columns([3, 1])
     
     with col_info:
-        st.write(f"**Configuration:**")
-        st.write(f"- Countries: {config['countries']}")
-        st.write(f"- Categories: {len(config.get('cats', []))} selected")
-        st.write(f"- Targets: {config['targets']}")
-        st.write(f"- Combinations: {len(saved_state['valid_combinations'])}")
-        
-        # Show checkpoint progress
-        st.write("**Target Status:**")
         for target in config['targets']:
             completed = load_checkpoint(target)
             if completed:
                 progress_pct = (len(completed) / len(saved_state['valid_combinations'])) * 100
-                if len(completed) == len(saved_state['valid_combinations']):
-                    st.write(f"- ✅ '{target}': Complete")
-                else:
-                    st.write(f"- ⏸️ '{target}': {len(completed)}/{len(saved_state['valid_combinations'])} ({progress_pct:.1f}%)")
+                # if len(completed) == len(saved_state['valid_combinations']):
+                #     st.write(f"- ✅ '{target}': Complete")
+                # else:
+                #     st.write(f"- ⏸️ '{target}': {len(completed)}/{len(saved_state['valid_combinations'])} ({progress_pct:.1f}%)")
             else:
                 temp_file = f"temp_results_{target}.parquet"
                 if os.path.exists(temp_file):
@@ -629,22 +618,22 @@ if st.session_state.get('should_auto_resume', False) and st.session_state.get('a
                 else:
                     st.write(f"- 🆕 '{target}': Not started")
     
-    with col_actions:
-        if st.button("🗑️ Cancel & Start Fresh", use_container_width=True):
-            clear_job_state()
-            import shutil
-            shutil.rmtree(CHECKPOINT_DIR, ignore_errors=True)
-            os.makedirs(CHECKPOINT_DIR, exist_ok=True)
-            # Clean up any temp parquet files
-            import glob
-            for temp_file in glob.glob("temp_results_*.parquet"):
-                if os.path.exists(temp_file):
-                    os.remove(temp_file)
-            st.session_state.should_auto_resume = False
-            st.session_state.trigger_auto_resume = False
-            st.session_state.pop('auto_resume_state', None)
-            st.success("✅ Cleared previous job. Select new filters below.")
-            st.rerun()
+    # with col_actions:
+    #     if st.button("🗑️ Cancel & Start Fresh", use_container_width=True):
+    #         clear_job_state()
+    #         import shutil
+    #         shutil.rmtree(CHECKPOINT_DIR, ignore_errors=True)
+    #         os.makedirs(CHECKPOINT_DIR, exist_ok=True)
+    #         # Clean up any temp parquet files
+    #         import glob
+    #         for temp_file in glob.glob("temp_results_*.parquet"):
+    #             if os.path.exists(temp_file):
+    #                 os.remove(temp_file)
+    #         st.session_state.should_auto_resume = False
+    #         st.session_state.trigger_auto_resume = False
+    #         st.session_state.pop('auto_resume_state', None)
+    #         st.success("✅ Cleared previous job. Select new filters below.")
+    #         st.rerun()
     
     st.markdown("---")
 
@@ -745,8 +734,8 @@ if run or (filter_key in st.session_state.results_cache) or st.session_state.get
                 st.error("❌ Please click 'Run combinations' first to find valid combinations!")
                 st.stop()
             
-            # Clear all previous cache before starting a new run (safety measure)
-            st.info("🗑️ Clearing previous cache...")
+            # # Clear all previous cache before starting a new run (safety measure)
+            # st.info("🗑️ Clearing previous cache...")
             
             # Clear job state
             clear_job_state()
@@ -837,7 +826,8 @@ if run or (filter_key in st.session_state.results_cache) or st.session_state.get
             
             # Check if we're resuming
             if completed_indices:
-                st.info(f"📌 Resuming from checkpoint: {len(completed_indices)}/{len(valid_combinations)} combinations already completed for '{target}'")
+                pass
+                # st.info(f"📌 Resuming from checkpoint: {len(completed_indices)}/{len(valid_combinations)} combinations already completed for '{target}'")
             else:
                 # Clean up old temp file only if starting fresh
                 if os.path.exists(temp_parquet_file):
