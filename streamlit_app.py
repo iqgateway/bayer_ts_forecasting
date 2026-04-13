@@ -24,14 +24,12 @@ import concurrent.futures
 import datetime
 import pickle
 from file_cache_utils import load_cache, save_cache, get_cached_valid_combinations
+import re
 # from statsmodels.graphics.tsaplots import plot_acf
 
-DATA_PATHS = [
-    # os.path.join(os.path.dirname(__file__), "bayer_final_1.csv"),
-    # os.path.join(os.path.dirname(__file__), "bayer_final_2.csv"),
-    # os.path.join(os.path.dirname(__file__), "bayer_final_3.csv"),
-    os.path.join(os.path.dirname(__file__), "bayer_final.csv"),
-]
+# Check if bayer_final.csv exists, otherwise DATA_PATHS will be empty (requires upload)
+bayer_final_path = os.path.join(os.path.dirname(__file__), "bayer_final.csv")
+DATA_PATHS = [bayer_final_path] if os.path.exists(bayer_final_path) else []
 LOGO_PATH = os.path.join(os.path.dirname(__file__), "logo.svg")
 
 st.set_page_config(page_title="Time Series Forecasting", layout="wide")
@@ -155,13 +153,65 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-@st.cache_data
-def load_data():
-    dfs = [load_and_prepare(path) for path in DATA_PATHS]
-    return pd.concat(dfs, ignore_index=True)
+def convert_wide_to_long(wide_df):
+    """
+    Convert wide-format DataFrame to long-format.
+    Expects columns like 'Country', 'Global_CAT', etc., and multi-line headers like:
+    'Jan 2021\nUnits', 'Jan 2021\nEuro Value', 'Feb 2021\nUnits', etc.
+    """
+    # Strip whitespace from column names
+    wide_df = wide_df.rename(columns=lambda c: str(c).strip())
+    
+    # Predefined ID columns
+    id_cols = [
+        'Country',
+        'Global CAT',
+        'Global Sub-Cat',
+        'Global Segment',
+        'Global Brand BAM',
+        'Brand',
+        'Unified Corp',
+        'Product',
+        'BCH',
+    ]
+    
+    # Headers like "Jan 2021\nUnits" or "Jan 2021\nEuro Value"
+    value_cols = [c for c in wide_df.columns if '\n' in c]
+    rx = re.compile(r'^(?P<Month>[A-Za-z]{3} \d{4})\n(?P<Measure>Units|Euro Value)$')
+    parsed = [rx.match(c) for c in value_cols]
+    
+    if not all(parsed):
+        raise ValueError("Unexpected header format. Expected 'Mon YYYY\\nUnits' or 'Mon YYYY\\nEuro Value'.")
+    
+    # Build MultiIndex (Month, Measure) for the wide columns
+    multi_cols = pd.MultiIndex.from_tuples(
+        [(m.group('Month'), m.group('Measure')) for m in parsed],
+        names=['Month', 'Measure']
+    )
+    
+    wide = wide_df.set_index(id_cols)[value_cols]
+    wide.columns = multi_cols
+    
+    # Stack to convert to long format
+    df_long_measure = (
+        wide.stack(level=['Month', 'Measure'])
+            .reset_index(name='Value')
+    )
+    
+    # Convert to numeric
+    df_long_measure['Value'] = pd.to_numeric(df_long_measure['Value'], errors='coerce')
+    
+    # Sort by Month (chronological ascending)
+    df_long_measure['Month_dt'] = pd.to_datetime(df_long_measure['Month'], format='%b %Y', errors='coerce')
+    df_long_measure = (
+        df_long_measure
+        .sort_values('Month_dt')
+        .drop(columns='Month_dt')
+        .reset_index(drop=True)
+    )
+    
+    return df_long_measure
 
-df = load_data()
-# Inline logo before the main heading
 
 def format_indian_number(n):
     s = str(abs(int(n)))
@@ -180,6 +230,13 @@ def format_indian_number(n):
             parts.insert(0, rest)
         return ','.join(parts + [last3])
 
+@st.cache_data
+def load_data():
+    if not DATA_PATHS:
+        return None
+    dfs = [load_and_prepare(path) for path in DATA_PATHS]
+    return pd.concat(dfs, ignore_index=True)
+
 try:
     with open(LOGO_PATH, "r", encoding="utf-8") as _f:
         _svg = _f.read()
@@ -195,6 +252,72 @@ try:
 except Exception:
     # Fallback to standard title if logo not available
     st.title("Bayer Time Series Forecasting")
+
+
+# ==================== DATASET UPLOAD ====================
+
+# Initialize session state for tracking processed files
+if 'processed_file_id' not in st.session_state:
+    st.session_state.processed_file_id = None
+
+st.subheader("Upload Dataset")
+uploaded_file = st.file_uploader(
+    "Upload CSV file",
+    type=["csv"],
+    key="dataset_uploader"
+)
+
+if uploaded_file is not None:
+    # Create a unique identifier for this file
+    file_id = f"{uploaded_file.name}_{uploaded_file.size}"
+    
+    # Only process if this is a new file
+    if st.session_state.processed_file_id != file_id:
+        st.info("Converting dataset from wide to long format...")
+        
+        try:
+            # Read the uploaded file
+            wide_df = pd.read_csv(uploaded_file)
+            
+            # Convert to long format
+            long_df = convert_wide_to_long(wide_df)
+            
+            # Save as bayer_final.csv
+            output_path = os.path.join(os.path.dirname(__file__), "bayer_final.csv")
+            long_df.to_csv(output_path, index=False)
+            
+            st.success(f"✅ Dataset converted and saved successfully! ({len(long_df)} rows)")
+            
+            # Mark this file as processed
+            st.session_state.processed_file_id = file_id
+            
+            # Update DATA_PATHS
+            DATA_PATHS.clear()
+            DATA_PATHS.append(output_path)
+            
+            # Clear the cache to reload data
+            load_data.clear()
+            
+            # Rerun to load the new data
+            st.rerun()
+            
+        except Exception as e:
+            st.error(f"Error converting dataset: {e}")
+            st.session_state.processed_file_id = None
+elif not DATA_PATHS:
+    st.warning("⚠️ No dataset found. Please upload a CSV file to continue.")
+    st.stop()
+
+st.markdown("---")
+
+# ==================== END DATASET UPLOAD ====================
+
+
+df = load_data()
+
+if df is None:
+    st.warning("⚠️ No dataset available. Please upload a CSV file above.")
+    st.stop()
 
 
 # ==================== CHECKPOINT/RESUME SETUP ====================
