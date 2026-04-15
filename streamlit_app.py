@@ -266,6 +266,7 @@ with upload_col1:
     uploaded_file = st.file_uploader(
         "Upload CSV file",
         type=["csv"],
+        accept_multiple_files=False,
         key="dataset_uploader",
         label_visibility="collapsed"
     )
