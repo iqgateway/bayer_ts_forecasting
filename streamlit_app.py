@@ -260,12 +260,15 @@ except Exception:
 if 'processed_file_id' not in st.session_state:
     st.session_state.processed_file_id = None
 
-st.subheader("Upload Dataset")
-uploaded_file = st.file_uploader(
-    "Upload CSV file",
-    type=["csv"],
-    key="dataset_uploader"
-)
+st.subheader("Upload File")
+upload_col1, upload_col2 = st.columns([1, 2])
+with upload_col1:
+    uploaded_file = st.file_uploader(
+        "Upload CSV file",
+        type=["csv"],
+        key="dataset_uploader",
+        label_visibility="collapsed"
+    )
 
 if uploaded_file is not None:
     # Create a unique identifier for this file
@@ -304,8 +307,11 @@ if uploaded_file is not None:
         except Exception as e:
             st.error(f"Error converting dataset: {e}")
             st.session_state.processed_file_id = None
+    else:
+        # File already processed, show completion message
+        st.success("Upload file complete. Please proceed with applying filter and running models.")
 elif not DATA_PATHS:
-    st.warning("⚠️ No dataset found. Please upload a CSV file to continue.")
+    st.warning("No dataset found. Please upload a CSV file to continue.")
     st.stop()
 
 st.markdown("---")
