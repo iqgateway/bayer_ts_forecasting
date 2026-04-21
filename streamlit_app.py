@@ -709,11 +709,11 @@ use_tsfresh = True  # Always enabled
 use_tuning = st.checkbox("Enable hyperparameter tuning")
 
 # Create buttons side by side with minimal gap
-button_col1, button_col2 = st.columns([0.09, 1])
+button_col1, button_col2 = st.columns([0.09, 1.2])
 with button_col1:
-    clear = st.button("Clear Selection", width=200)
+    run = st.button("Run Model", width=120)
 with button_col2:
-    run = st.button("Run model", width=120)
+    clear = st.button("Clear Selection", width=140)
 
 # Handle clear selection
 if clear:
