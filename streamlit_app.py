@@ -51,7 +51,17 @@ st.markdown(
     div.stButton > button:hover {
         background-color: #89D329 !important;
     }
-    
+    /* Disabled button styling */
+    div.stButton > button:disabled {
+        background-color: #cccccc !important;
+        color: #666666 !important;
+        cursor: not-allowed !important;
+        opacity: 0.6 !important;
+    }
+    div.stButton > button:disabled:hover {
+        background-color: #cccccc !important;
+    }
+
     /* Header bottom border */
     .block-container h1 {
         border-bottom: 2px solid #F1F2F6 !important;
@@ -147,6 +157,44 @@ st.markdown(
     }
     .green-header {
         color: #89D329 !important;
+    }
+    /* Hide uploaded file preview and cancel button, but keep instructions visible */
+    div[data-testid="stFileUploader"] div[aria-live] ul {
+        display: none !important;
+    }
+    div[data-testid="stFileUploader"] button[title="Remove"] {
+        display: none !important;clear upload
+    }
+
+    /* Center the clear uploaded file button vertically with the file uploader and set width to auto */
+    div[data-testid="stHorizontalBlock"] .stButton {
+        margin-top: 12px !important;
+    }
+        div[data-testid="stFileUploaderFile"] {
+        display: none !important;
+    }
+div[data-testid="stFileUploaderDropzoneInstructions"] div span:nth-child(2) {
+    font-size: 10px !important;
+}
+
+
+    div[data-testid="stFileUploaderDropzoneInstructions"] div  span: nth-child(2) {
+    data-testid="stFileUploaderFile
+    div[data-testid="column"]:nth-of-type(2) button[kind="secondary"],
+    div[data-testid="column"]:nth-of-type(2) button[data-testid="baseButton-secondary"] {
+        width: auto !important;
+        min-width: 160px;
+        max-width: 100%;
+        margin-top: -20px;
+        display: block;
+        margin-left: auto;
+        margin-right: auto;
+    }
+    /* Add vertical space above the upload row using a pseudo-element on the flex container */
+    div[data-testid="stHorizontalBlock"]::before {
+        content: "";
+        display: block;
+        height: 24px;
     }
     </style>
     """,
@@ -259,6 +307,8 @@ except Exception:
 # Initialize session state for tracking processed files
 if 'processed_file_id' not in st.session_state:
     st.session_state.processed_file_id = None
+if 'uploader_key_counter' not in st.session_state:
+    st.session_state.uploader_key_counter = 0
 
 st.subheader("Upload File")
 upload_col1, upload_col2 = st.columns([0.29, 1])
@@ -267,9 +317,17 @@ with upload_col1:
         "Upload CSV file",
         type=["csv"],
         accept_multiple_files=False,
-        key="dataset_uploader",
+        key=f"dataset_uploader_{st.session_state.uploader_key_counter}",
         label_visibility="collapsed"
     )
+
+with upload_col2:
+    if st.button("Start Over",
+                 key=f"start_over_{st.session_state.uploader_key_counter}",
+                 disabled=uploaded_file is None):
+        st.session_state.uploader_key_counter += 1
+        st.session_state.processed_file_id = None
+        st.rerun()
 
 if uploaded_file is not None:
     # Create a unique identifier for this file
