@@ -327,6 +327,23 @@ with upload_col2:
                  disabled=uploaded_file is None):
         st.session_state.uploader_key_counter += 1
         st.session_state.processed_file_id = None
+        # Delete all .pkl files in the workspace (including checkpoints and job state)
+        import glob
+        import os
+        # Remove all .pkl files in the current directory
+        for pkl_file in glob.glob(os.path.join(os.path.dirname(__file__), '*.pkl')):
+            try:
+                os.remove(pkl_file)
+            except Exception:
+                pass
+        # Remove all .pkl files in the checkpoints directory
+        checkpoint_dir = os.path.join(os.path.dirname(__file__), 'checkpoints')
+        if os.path.exists(checkpoint_dir):
+            for pkl_file in glob.glob(os.path.join(checkpoint_dir, '*.pkl')):
+                try:
+                    os.remove(pkl_file)
+                except Exception:
+                    pass
         st.rerun()
 
 if uploaded_file is not None:
