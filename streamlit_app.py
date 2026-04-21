@@ -666,12 +666,31 @@ with col5:
         else:
             eff_products = []
 
+
+
+
+# Calculate product count for summary
+if has_prod:
+    # If all filters are empty (no selection), show 0
+    if (
+        not eff_countries and not eff_cats and not eff_segments and not eff_bchs and (
+            (not show_product_filter) or (show_product_filter and not st.session_state.get('sel_products'))
+        )
+    ):
+        product_count = 0
+    elif not eff_products:
+        product_count = 0
+    else:
+        product_count = len(eff_products)
+else:
+    product_count = "N/A"
+
 st.write("Selected filters:", {
     "Countries": f"{len(eff_countries)} selected",
     "Global CAT": f"{len(eff_cats)} selected",
     "Global Segment": f"{len(eff_segments)} selected" if has_seg else "N/A",
     "Bayer": f"{len(eff_bchs)} selected" if has_bch else "N/A",
-    "Product": f"{len(eff_products)} selected" if has_prod else "N/A",
+    "Product": f"{product_count} selected" if has_prod else "N/A",
 })
 
 
