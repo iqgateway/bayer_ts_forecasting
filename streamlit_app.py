@@ -261,7 +261,7 @@ if 'processed_file_id' not in st.session_state:
     st.session_state.processed_file_id = None
 
 st.subheader("Upload File")
-upload_col1, upload_col2 = st.columns([1, 2])
+upload_col1, upload_col2 = st.columns([0.29, 1])
 with upload_col1:
     uploaded_file = st.file_uploader(
         "Upload CSV file",
