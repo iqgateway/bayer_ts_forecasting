@@ -293,13 +293,13 @@ try:
     header_html = (
         "<div style=\"display:flex; align-items:center; gap:10px;\">"
         + _svg
-        + "<h1 style=\"margin:0;\">Bayer Time Series Forecasting</h1>"
+        + "<h1 style=\"margin:0;\">Bayer Consumer Health Products Forecasting Module</h1>"
         + "</div>"
     )
     st.markdown(header_html, unsafe_allow_html=True)
 except Exception:
     # Fallback to standard title if logo not available
-    st.title("Bayer Time Series Forecasting")
+    st.title("Bayer Consumer Health Products Forecasting Module")
 
 
 # ==================== DATASET UPLOAD ====================
